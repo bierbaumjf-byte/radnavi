@@ -93,6 +93,55 @@ export async function renameWeg(id, name) {
   return putWeg(w);
 }
 
+/* ---------------------------- Startbild --------------------------- *
+ *  Das eigene Bild bleibt bewusst hier in der Datenbank des Geräts und
+ *  nicht im Programmordner: der liegt öffentlich auf GitHub. So ist das
+ *  Bild auf PC und Handy da, ohne dass es jemand sonst zu sehen bekommt.
+ *  Dafür muss es auf jedem Gerät einmal ausgewählt werden.
+ * ------------------------------------------------------------------ */
+
+const BILD_KEY = 'startbild';
+
+/** Höchstens so breit/hoch wird gespeichert – ein Handyfoto hat 4000 px
+ *  und würde die Datenbank unnötig füllen. */
+const BILD_KANTE = 900;
+
+export async function getStartbild() {
+  try {
+    const e = await tx(STORE_META, 'readonly', s => s.get(BILD_KEY));
+    return e && e.blob ? e : null;
+  } catch { return null; }
+}
+
+export async function putStartbild(blob, name) {
+  return tx(STORE_META, 'readwrite', s =>
+    s.put({ key: BILD_KEY, blob, name: name || '', gespeichert: Date.now() }));
+}
+
+export async function deleteStartbild() {
+  return tx(STORE_META, 'readwrite', s => s.delete(BILD_KEY));
+}
+
+/**
+ * Ein ausgewähltes Foto auf vernünftige Größe bringen. Liefert einen
+ * JPEG-Blob. Schlägt das Zeichnen fehl (sehr altes Gerät, HEIC ohne
+ * Unterstützung), kommt die Datei unverändert zurück – lieber groß als
+ * gar nicht.
+ */
+export async function bildVerkleinern(file) {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const k = Math.min(1, BILD_KANTE / Math.max(bitmap.width, bitmap.height));
+    const w = Math.round(bitmap.width * k), h = Math.round(bitmap.height * k);
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    c.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+    return blob || file;
+  } catch { return file; }
+}
+
 /* --------------------------- Einstellungen ------------------------ */
 
 const SETTINGS_KEY = 'radnavi.settings';

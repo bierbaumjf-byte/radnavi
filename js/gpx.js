@@ -218,7 +218,7 @@ export function toGPX(wege) {
   const list = Array.isArray(wege) ? wege : [wege];
   const parts = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    `<gpx version="1.1" creator="RadNavi" xmlns="${NS}">`,
+    `<gpx version="1.1" creator="Jans Super Fahrrad Navi" xmlns="${NS}">`,
     '  <metadata>',
     `    <name>${esc(list.length === 1 ? list[0].name : 'RadNavi-Wege')}</name>`,
     `    <time>${new Date().toISOString()}</time>`,

@@ -5,7 +5,8 @@
 import {
   loadSettings, saveSettings, defaultSettings,
   putWeg, putWege, allWege, deleteWeg, renameWeg, newId,
-  tileCacheSize, clearTileCache
+  tileCacheSize, clearTileCache,
+  getStartbild, putStartbild, deleteStartbild, bildVerkleinern
 } from './store.js';
 import { MapView, BASE_LAYERS } from './map.js';
 import { ElevationChart } from './elev.js';
@@ -90,6 +91,7 @@ const elev = new ElevationChart($('#elev'), {
 
 async function init() {
   applyTheme();
+  zeigeSplash();
   map.setBase(S.layer);
   map.setCycleOverlay(S.cycleOverlay);
 
@@ -125,6 +127,82 @@ async function init() {
 
   // Standort beim Start, aber ohne zu drängeln.
   if (!S.lastView) locate({ quiet: true });
+}
+
+/* ---------------------------- Startbild --------------------------- *
+ *  Voreingestellt ist der gezeichnete Radfahrer aus dem Programmordner –
+ *  den sieht jeder, der den Link bekommt. Wer ein eigenes Bild wählt,
+ *  überschreibt ihn; dieses Bild bleibt in der Datenbank des Geräts und
+ *  wird nirgendwo hochgeladen.
+ * ------------------------------------------------------------------ */
+
+const SPLASH_MS = 1900;
+let bildUrl = null;          // laufende Objekt-URL, muss wieder freigegeben werden
+
+function zeigeSplash() {
+  const el = $('#splash');
+  const img = $('#splashBild');
+  if (!el) return;
+
+  img.src = 'icons/comic-radfahrer.svg';
+  img.hidden = false;
+
+  // Das eigene Bild kommt aus der Datenbank und damit später als das
+  // gezeichnete. Ist eins da, wird getauscht, solange der Splash steht.
+  getStartbild().then(e => {
+    if (e && e.blob && !el.hidden) {
+      if (bildUrl) URL.revokeObjectURL(bildUrl);
+      bildUrl = URL.createObjectURL(e.blob);
+      img.src = bildUrl;
+    }
+  }).catch(() => { /* dann eben der gezeichnete */ });
+
+  const weg = () => {
+    if (el.hidden) return;
+    el.classList.add('weg');
+    setTimeout(() => {
+      el.hidden = true;
+      if (bildUrl) { URL.revokeObjectURL(bildUrl); bildUrl = null; }
+    }, 500);
+  };
+  el.addEventListener('click', weg, { once: true });
+  setTimeout(weg, SPLASH_MS);
+}
+
+/** Vorschau und Beschriftung in den Einstellungen nachführen. */
+let vorschauUrl = null;
+async function renderBildZeile() {
+  const img = $('#bildVorschau'), info = $('#bildInfo'), weg = $('#btnBildWeg');
+  const e = await getStartbild();
+  if (vorschauUrl) { URL.revokeObjectURL(vorschauUrl); vorschauUrl = null; }
+  if (e && e.blob) {
+    vorschauUrl = URL.createObjectURL(e.blob);
+    img.src = vorschauUrl;
+    img.hidden = false;
+    weg.hidden = false;
+    const kb = Math.round(e.blob.size / 1024);
+    info.textContent = `Eigenes Bild${e.name ? ' – ' + e.name : ''} (${kb} kB)`;
+  } else {
+    img.hidden = true;
+    weg.hidden = true;
+    info.textContent = 'Noch keins gewählt – es erscheint der gezeichnete Radfahrer';
+  }
+}
+
+async function bildWaehlen(file) {
+  if (!file) return;
+  if (!/^image\//.test(file.type)) { toast('Das ist kein Bild'); return; }
+  busy(true);
+  try {
+    const klein = await bildVerkleinern(file);
+    await putStartbild(klein, file.name);
+    await renderBildZeile();
+    toast('Startbild gespeichert – bleibt auf diesem Gerät');
+  } catch (e) {
+    toast('Bild konnte nicht gespeichert werden: ' + e.message, 5000);
+  } finally {
+    busy(false);
+  }
 }
 
 /* --------------------------- Streckenpunkte ----------------------- */
@@ -1433,6 +1511,16 @@ function bindUI() {
     e.target.value = '';
   };
   $('#btnNaviki').onclick = () => importNaviki();
+
+  $('#btnBildWahl').onclick = () => $('#fileBild').click();
+  $('#fileBild').onchange = e => { bildWaehlen(e.target.files[0]); e.target.value = ''; };
+  $('#btnBildWeg').onclick = async () => {
+    await deleteStartbild();
+    await renderBildZeile();
+    toast('Eigenes Bild entfernt');
+  };
+  renderBildZeile();
+
   $('#btnRecord').onclick = () => toggleRecording();
   $('#wegeFilter').oninput = () => renderWege();
   $('#wegeSort').onchange = () => renderWege();
