@@ -1,6 +1,6 @@
 {
-  "name": "Jans Super Fahrrad Navi",
-  "short_name": "Jans Fahrrad Navi",
+  "name": "Jan's super Fahrradnavi",
+  "short_name": "Fahrradnavi",
   "description": "Routenplanung und Navigation für ruhige, asphaltierte Nebenstrecken mit viel Natur.",
   "lang": "de",
   "start_url": "./",

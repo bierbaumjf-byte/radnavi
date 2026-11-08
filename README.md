@@ -1,4 +1,4 @@
-# Jans Super Fahrrad Navi
+# Jan's super Fahrradnavi
 
 Fahrrad-Routenplanung und Navigation im Browser – am PC und auf dem Handy,
 aus derselben Quelle, ohne App-Store.

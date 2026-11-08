@@ -1,5 +1,5 @@
 <#
-    serve.ps1 - startet Jans Super Fahrrad Navi am PC.
+    serve.ps1 - startet Jan's super Fahrradnavi am PC.
 
     Aufruf:   powershell -ExecutionPolicy Bypass -File serve.ps1
     Dann im Browser:  http://localhost:8099
@@ -55,7 +55,7 @@ try {
 }
 
 Write-Host ""
-Write-Host "  Jans Super Fahrrad Navi laeuft." -ForegroundColor Green
+Write-Host "  Jan's super Fahrradnavi laeuft." -ForegroundColor Green
 Write-Host "  Im Browser oeffnen:  http://localhost:$Port"
 Write-Host "  Ordner:              $root"
 Write-Host ""
@@ -125,5 +125,5 @@ try {
     }
 } finally {
     try { $listener.Stop(); $listener.Close() } catch { }
-    Write-Host "Jans Super Fahrrad Navi beendet." -ForegroundColor DarkGray
+    Write-Host "Jan's super Fahrradnavi beendet." -ForegroundColor DarkGray
 }
