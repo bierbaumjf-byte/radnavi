@@ -33,7 +33,27 @@ export const BASE_LAYERS = {
     url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
     opts: { subdomains: 'ab', maxZoom: 20, maxNativeZoom: 19,
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Humanitarian OSM Team' }
+  },
+  // Luftbild. Nicht von Google: deren Kacheln gibt es nur innerhalb von
+  // Google Maps selbst, ein fremder Abruf verstößt gegen die Bedingungen.
+  // Esri liefert dieselbe Art Bild (in Deutschland oft dieselben Befliegungen)
+  // und erlaubt die Nutzung ausdrücklich, wenn die Herkunft dabeisteht.
+  sat: {
+    label: 'Luftbild (Satellit)',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    opts: { maxZoom: 20, maxNativeZoom: 19,
+            attribution: 'Luftbild &copy; Esri, Maxar, Earthstar Geographics, GIS-Community' }
   }
+};
+
+/**
+ * Beschriftungen fürs Luftbild. Ein Satellitenbild ohne Namen ist zum
+ * Hinsehen schön und zum Zurechtfinden unbrauchbar – deshalb legt sich
+ * über das Luftbild eine durchsichtige Ebene mit Orten und Straßen.
+ */
+const LABEL_OVERLAY = {
+  url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+  opts: { maxZoom: 20, maxNativeZoom: 19, attribution: 'Beschriftung &copy; Esri' }
 };
 
 const CYCLE_OVERLAY = {
@@ -62,6 +82,7 @@ export class MapView {
     this.baseKey = null;
     this.baseLayer = null;
     this.overlay = null;
+    this.labels = null;
 
     this.wpMarkers = [];
     this.routeLine = null;
@@ -87,12 +108,25 @@ export class MapView {
     this.baseLayer = L.tileLayer(def.url, { ...def.opts, crossOrigin: true }).addTo(this.map);
     this.baseLayer.setZIndex(1);
     this.baseKey = key;
+    this.setLabels(key === 'sat');
+  }
+
+  /** Ortsnamen über dem Luftbild – nur dort, sonst stören sie. */
+  setLabels(on) {
+    if (on && !this.labels) {
+      this.labels = L.tileLayer(LABEL_OVERLAY.url, { ...LABEL_OVERLAY.opts, crossOrigin: true })
+        .addTo(this.map);
+      this.labels.setZIndex(2);
+    } else if (!on && this.labels) {
+      this.map.removeLayer(this.labels);
+      this.labels = null;
+    }
   }
 
   setCycleOverlay(on) {
     if (on && !this.overlay) {
       this.overlay = L.tileLayer(CYCLE_OVERLAY.url, CYCLE_OVERLAY.opts).addTo(this.map);
-      this.overlay.setZIndex(2);
+      this.overlay.setZIndex(3);
     } else if (!on && this.overlay) {
       this.map.removeLayer(this.overlay);
       this.overlay = null;
