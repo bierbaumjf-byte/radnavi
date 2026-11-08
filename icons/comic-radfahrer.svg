@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img"
      aria-label="Gezeichneter Radfahrer auf einem Tourenrad">
-  <title>Jans Super Fahrrad Navi</title>
+  <title>Jan's super Fahrradnavi</title>
 
   <!-- Farben einmal oben, damit sich die Figur leicht umfärben lässt.
        Keine CSS-Variablen: die Datei wird als <img> geladen und kommt
