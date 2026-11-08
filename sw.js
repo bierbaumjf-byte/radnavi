@@ -7,7 +7,7 @@
  *  3. Routing / Suche – nur Netz. Eine alte Route wäre falsch.
  * ------------------------------------------------------------------ */
 
-const VERSION    = 'v5';
+const VERSION    = 'v6';
 const SHELL      = 'radnavi-shell-' + VERSION;
 const TILES      = 'radnavi-tiles';
 const TILE_LIMIT = 9000;
@@ -28,6 +28,7 @@ const SHELL_FILES = [
   'profiles/naturroute.brf',
   'manifest.webmanifest',
   'icons/icon.svg',
+  'icons/comic-radfahrer.svg',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'
 ];

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
 <meta name="theme-color" content="#1b3a2a">
-<title>RadNavi</title>
+<title>Jans Super Fahrrad Navi</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -14,6 +14,14 @@
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- Startbild. Verschwindet von selbst; ein Tipp beendet es sofort.     -->
+<!-- ------------------------------------------------------------------ -->
+<div id="splash" class="splash" role="presentation">
+  <img id="splashBild" alt="" hidden>
+  <div class="splashname">Jans Super Fahrrad Navi</div>
+</div>
 
 <div id="map" aria-label="Karte"></div>
 
@@ -197,6 +205,21 @@
 
   <!-- ---------------- Einstellungen ---------------- -->
   <div class="tabpane" id="tab-opts" role="tabpanel">
+    <div class="blockrow"><span>Eigenes Startbild</span>
+      <div class="bildzeile">
+        <img id="bildVorschau" alt="" hidden>
+        <span id="bildInfo" class="muted small">Noch keins gewählt</span>
+      </div>
+      <div class="row">
+        <button id="btnBildWahl" class="btn ghost small">Bild wählen</button>
+        <button id="btnBildWeg" class="btn ghost small" hidden>Entfernen</button>
+      </div>
+      <div class="muted small">Bleibt auf diesem Gerät – es wird nirgendwo hochgeladen.
+        Auf dem Handy also einmal dort auswählen.</div>
+      <input type="file" id="fileBild" accept="image/*" hidden>
+    </div>
+
+    <div class="divider"></div>
     <label class="switchrow"><span>Sprachansagen</span><input type="checkbox" id="optVoice" checked></label>
     <label class="switchrow"><span>Automatisch neu berechnen bei Abweichung</span><input type="checkbox" id="optReroute" checked></label>
     <label class="switchrow"><span>Bildschirm während Navigation anlassen</span><input type="checkbox" id="optWake" checked></label>
