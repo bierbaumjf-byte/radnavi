@@ -100,6 +100,7 @@ export class MapView {
     this.routeLine = null;
     this.routeCasing = null;
     this.altLines = [];
+    this.beelineLines = [];
     this.wegLines = new Map();
     this.meMarker = null;
     this.meAccuracy = null;
@@ -208,7 +209,15 @@ export class MapView {
 
   /* ------------------------------ Route --------------------------- */
 
-  showRoute(coords) {
+  /**
+   * @param coords    [[lon, lat], …]
+   * @param luftlinie Index-Bereiche [[von, bis], …], die nicht aus dem
+   *                  Wegenetz stammen. Die werden grau gestrichelt
+   *                  darübergelegt – eine Luftlinie soll nicht aussehen
+   *                  wie eine Strecke, die man fahren kann.
+   * @param faehre    Ebenso für Fährstrecken, in Blau.
+   */
+  showRoute(coords, luftlinie = [], faehre = []) {
     this.clearRoute();
     if (!coords || coords.length < 2) return;
     const latlngs = coords.map(c => [c[1], c[0]]);
@@ -221,6 +230,24 @@ export class MapView {
     }).addTo(this.map);
     // Linien liegen alle im selben Leaflet-Pane; die Reihenfolge
     // ergibt sich aus dem Hinzufügen, erst Kontur, dann Route.
+
+    // Erst das Rot wegnehmen, dann die gestrichelte Linie darauf. Ohne
+    // das Weiß darunter blitzt die rote Route durch die Lücken, und es
+    // sieht aus wie eine Strecke, die man fahren kann.
+    const streifen = (bereiche, stil) => {
+      for (const [von, bis] of bereiche) {
+        const teil = latlngs.slice(von, bis + 1);
+        if (teil.length < 2) continue;
+        this.beelineLines.push(L.polyline(teil, {
+          color: '#ffffff', weight: 7, opacity: 1, lineJoin: 'round', lineCap: 'round'
+        }).addTo(this.map));
+        this.beelineLines.push(L.polyline(teil, stil).addTo(this.map));
+      }
+    };
+    streifen(faehre,    { color: '#1f6fb2', weight: 5, opacity: 0.95,
+                          dashArray: '14 8', lineCap: 'butt' });
+    streifen(luftlinie, { color: '#6b7680', weight: 5, opacity: 0.95,
+                          dashArray: '2 10', lineCap: 'round' });
   }
 
   clearRoute() {
@@ -228,6 +255,8 @@ export class MapView {
       if (l) this.map.removeLayer(l);
     }
     this.routeLine = this.routeCasing = this.progressLine = null;
+    this.beelineLines.forEach(l => this.map.removeLayer(l));
+    this.beelineLines = [];
     this.clearAlternatives();
   }
 

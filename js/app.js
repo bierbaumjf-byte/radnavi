@@ -388,7 +388,7 @@ function showRoute(i, { fit = false } = {}) {
   const r = activeRoute();
   if (!r) return;
 
-  map.showRoute(r.coords);
+  map.showRoute(r.coords, r.beeline, r.ferry);
   map.showAlternatives(routes.filter((_, k) => k !== i).map(x => x.route.coords));
   if (fit) map.fit(r.coords);
 
@@ -434,7 +434,9 @@ function renderQuality(r) {
              (q.officialPct ? ` · ${q.officialPct} % Radweg oder Fahrradstraße` : '') +
              (q.offRoutePct ? ` · ${q.offRoutePct} % sonstige Wege` : ''));
 
-  let first = `${q.pavedPct} % befestigt`;
+  let first = `${q.pavedPct} % befestigt` +
+              (q.ridableMeters && q.ridableMeters < r.length - 100
+                ? ` (vom gefahrenen Teil, ${fmtKm(q.ridableMeters)})` : '');
   if (q.measuredNature) first += ` · ${q.naturePct} % durch Wald und Grün`;
   if (q.townPct != null) first += ` · ${q.townPct} % durch Ortslage`;
   notes.push(first);
@@ -476,9 +478,29 @@ function renderQuality(r) {
     notes.push(`⚠ ${q.loudPct} % in Straßenlärm – hier gibt es offenbar keine ruhige Verbindung`);
   }
   // Luftlinie: zuerst nennen, das ist der gröbste Mangel einer Route.
+  // Nicht nur "da stimmt was nicht", sondern welcher Punkt es ist und
+  // wie weit er daneben liegt – sonst sucht man sich tot.
+  const abseits = punkteAbseitsDerWege(r);
   if (q.beelineMeters >= 50) {
-    notes.push(`⚠ ${fmtKm(q.beelineMeters)} Luftlinie quer durchs Gelände – dort kennt ` +
-               `die Karte keinen Weg. Den betroffenen Punkt näher an eine Straße setzen.`);
+    const anteil = Math.round(100 * q.beelineMeters / r.length);
+    let text = `⚠ <b>${fmtKm(q.beelineMeters)} davon Luftlinie</b> (${anteil} %) – ` +
+               `dort kennt die Karte keinen Weg. Grau gepunktet auf der Karte.`;
+    if (abseits.length) {
+      text += '<br>Diese Punkte liegen abseits jedes Weges: ' + abseits.map(a =>
+        `<b>${a.marke}</b> „${a.name}“ (${fmtDistShort(a.abstand)} bis zur nächsten ` +
+        `befahrbaren Stelle dieser Route)`).join(', ');
+      text += ' <button type="button" id="btnFangPunkte" class="minibtn">' +
+              'Punkte dorthin ziehen</button>';
+    }
+    notes.push(text);
+  }
+
+  // Fähren sind erlaubt – ein Rheinübergang ist Gold wert. Eine
+  // Schiffspassage quer über eine Bucht ist etwas anderes, und sie sah
+  // auf der Karte aus wie eine Radstrecke.
+  if (q.ferryMeters >= 200) {
+    notes.push(`⚠ <b>${fmtKm(q.ferryMeters)} mit der Fähre</b> (${q.ferryPct} % der Strecke) – ` +
+               `blau gestrichelt. Unter „Feinabstimmung“ lassen sich Fähren abschalten.`);
   }
   if (q.unpavedPct >= 12) {
     const woher = q.unknownSurfacePct >= 5
@@ -489,6 +511,72 @@ function renderQuality(r) {
 
   warn.hidden = false;
   warn.innerHTML = notes.map(n => `<div>${n}</div>`).join('');
+
+  const knopf = $('#btnFangPunkte');
+  if (knopf) knopf.addEventListener('click', () => fangePunkteEin(abseits));
+}
+
+/**
+ * Welche Streckenpunkte liegen abseits des Wegenetzes?
+ *
+ * Gemessen wird gegen die Punkte der Route, die wirklich aus einem Weg
+ * stammen – die Luftlinienstücke selbst zählen nicht mit. Was dabei
+ * herauskommt, ist zugleich die Rettung: der nächstgelegene Punkt, auf
+ * dem man tatsächlich fahren kann.
+ */
+function punkteAbseitsDerWege(r, grenze = 150) {
+  if (!r.segments || !r.segments.length || !r.coords) return [];
+
+  // Luftlinien und Fähren ausblenden. Eine Fähre ist zwar eine echte
+  // Verbindung, aber kein Ort, an den man einen Streckenpunkt schiebt –
+  // sonst landet der Punkt wieder im Wasser.
+  const aus = new Array(r.coords.length).fill(false);
+  for (const bereiche of [r.beeline, r.ferry]) {
+    for (const [von, bis] of (bereiche || [])) {
+      for (let i = von; i <= bis && i < aus.length; i++) aus[i] = true;
+    }
+  }
+  const echt = [];
+  for (let i = 0; i < r.coords.length; i++) if (!aus[i]) echt.push(r.coords[i]);
+  if (!echt.length) return [];
+
+  const marke = i => i === 0 ? 'S' : i === waypoints.length - 1 ? 'Z' : String(i);
+  const out = [];
+  waypoints.forEach((wp, i) => {
+    let best = Infinity, ziel = null;
+    for (const c of echt) {
+      const d = dist([wp.lon, wp.lat], c);
+      if (d < best) { best = d; ziel = c; }
+    }
+    if (best > grenze) {
+      out.push({ i, marke: marke(i), name: wp.name || 'ohne Namen',
+                 abstand: Math.round(best), ziel });
+    }
+  });
+  return out;
+}
+
+/**
+ * Die genannten Punkte auf die nächste befahrbare Stelle schieben.
+ *
+ * "Nächste befahrbare Stelle" heißt: der nächste Punkt *dieser Route*,
+ * der auf einem Weg liegt – nicht der nächste Weg überhaupt. Das kann
+ * weit sein; deshalb steht der Abstand vorher im Hinweis und hinterher
+ * noch einmal in der Meldung.
+ */
+async function fangePunkteEin(liste) {
+  if (!liste || !liste.length) return;
+  const bewegt = [];
+  for (const a of liste) {
+    if (!waypoints[a.i] || !a.ziel) continue;
+    waypoints[a.i] = { ...waypoints[a.i], lat: a.ziel[1], lon: a.ziel[0], name: null };
+    bewegt.push(`${a.marke} um ${fmtDistShort(a.abstand)}`);
+  }
+  if (!bewegt.length) return;
+  renderWaypoints();
+  for (const a of liste) nameWaypoint(a.i);
+  toast('Verschoben: ' + bewegt.join(', '), 5000);
+  await computeRoute();
 }
 
 function renderAlternatives() {
@@ -694,12 +782,24 @@ const warte = ms => new Promise(r => setTimeout(r, ms));
 
 /**
  * Ist a besser als b? In dieser Reihenfolge:
- * 1. ohne längeres doppelt gefahrenes Stück
- * 2. nicht länger als gewünscht  (abrunden, nicht aufrunden)
- * 3. näher an der Wunschlänge von unten
- * 4. weniger Ortslage
+ * 1. ohne Luftlinie – eine Runde übers Wasser ist keine Runde
+ * 2. ohne längeres doppelt gefahrenes Stück
+ * 3. nicht länger als gewünscht  (abrunden, nicht aufrunden)
+ * 4. näher an der Wunschlänge von unten
+ * 5. weniger Ortslage
  */
 function besser(a, b, target) {
+  // Ein Ring um den Start kann Ecken im Wasser oder im Nichts haben.
+  // BRouter verbindet die dann schnurgerade oder über eine Fährlinie.
+  // Beides ist keine Runde, die man fährt – solche Vorschläge fliegen
+  // zuerst raus, egal wie gut ihre Länge passt.
+  const nassM = c => {
+    const q = (c.route && c.route.quality) || {};
+    return (q.beelineMeters || 0) + (q.ferryMeters || 0);
+  };
+  const trocken = c => nassM(c) < 100;
+  if (trocken(a) !== trocken(b)) return trocken(a);
+
   const sauber = c => c.doppelt.laengste <= MAX_DOPPELT;
   if (sauber(a) !== sauber(b)) return sauber(a);
 
@@ -1186,7 +1286,7 @@ async function onOffRoute(fix) {
     });
     routes = [{ idx: 0, route: r }];
     activeIdx = 0;
-    map.showRoute(r.coords);
+    map.showRoute(r.coords, r.beeline, r.ferry);
     renderSummary(r);
     elev.setRoute(r.coords);
     if (nav) nav.replaceRoute(r);

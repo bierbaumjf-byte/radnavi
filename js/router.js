@@ -269,6 +269,8 @@ export function parseRoute(gj) {
 
   return {
     coords, cum, length,
+    beeline: rangesWhere(segments, cum, istLuftlinie),
+    ferry: rangesWhere(segments, cum, istFaehre),
     ascend: Number(p['filtered ascend']) || elev.ascend,
     descend: elev.descend,
     duration: Number(p['total-time']) || null,
@@ -278,6 +280,42 @@ export function parseRoute(gj) {
     quality: quality(segments, length),
     raw: p
   };
+}
+
+/** Fähre: eine Schiffsverbindung, kein Weg zum Fahren. */
+export function istFaehre(s) { return s.tags.route === 'ferry'; }
+
+/** Luftlinie: weder Weg noch Fähre – von BRouter schnurgerade gezogen. */
+export function istLuftlinie(s) { return !s.tags.highway && !istFaehre(s); }
+
+/** Weg, auf dem man wirklich fährt. Eine Fähre ist das nicht. */
+export function istFahrbar(s) { return !!s.tags.highway; }
+
+/**
+ * Zusammenhängende Teile der Linie, auf die `pred` zutrifft – als
+ * Index-Bereiche in `coords`.
+ *
+ * Gebraucht für zweierlei, das auf der Karte gleich aussah und beides
+ * keine Radstrecke ist: Luftlinien (BRouter verbindet einen Punkt
+ * abseits jedes Weges schnurgerade) und Fährlinien. In der Table Bay
+ * kamen beide zusammen – 16 km Fähre und 4 km Luftlinie, gezeichnet
+ * als ganz normale rote Route.
+ */
+function rangesWhere(segments, cum, pred) {
+  if (!segments.length || cum.length < 2) return [];
+  const idxFor = m => {
+    let lo = 0, hi = cum.length - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] < m) lo = mid + 1; else hi = mid; }
+    return lo;
+  };
+  const out = [];
+  let von = null;
+  for (const s of segments) {
+    if (pred(s)) { if (von === null) von = s.along; }
+    else if (von !== null) { out.push([idxFor(von), idxFor(s.along)]); von = null; }
+  }
+  if (von !== null) out.push([idxFor(von), cum.length - 1]);
+  return out.filter(([a, b]) => b > a);
 }
 
 /**
@@ -338,7 +376,7 @@ function parseMessages(messages) {
 export function quality(segments, total) {
   if (!segments.length || !total) return null;
   let paved = 0, unpaved = 0, loud = 0, busy = 0, nature = 0, mainroad = 0, sidepathish = 0;
-  let onRoute = 0, official = 0, town = 0, beeline = 0, unknownSurface = 0;
+  let onRoute = 0, official = 0, town = 0, beeline = 0, unknownSurface = 0, ferry = 0;
 
   // Begleitradwege dürfen nur kurze Lückenschlüsse sein. Dafür zählt
   // nicht der Gesamtanteil, sondern das längste Stück am Stück: zehn
@@ -358,8 +396,18 @@ export function quality(segments, total) {
   // "freies Land", anders als bei Wald und Laerm.
   const hasTown = segments.some(s => s.town != null);
 
+  // Fähre und Luftlinie sind keine Radstrecke. Sie gehören nicht in die
+  // Belagsrechnung, sonst gilt eine Schiffspassage als "100 % befestigt" –
+  // genau das stand in der Table Bay unter der Route.
+  let ridable = 0;
+
   for (const s of segments) {
     const d = s.length;
+
+    if (istLuftlinie(s)) { beeline += d; continue; }
+    if (istFaehre(s))    { ferry += d;   continue; }
+    ridable += d;
+
     const sf = s.tags.surface;
     if (sf === 'asphalt' || sf === 'concrete' || sf === 'paved') paved += d;
     else if (sf && sf !== 'paving_stones' && sf !== 'sett' && sf !== 'cobblestone') unpaved += d;
@@ -369,11 +417,6 @@ export function quality(segments, total) {
       unpaved += d; unknownSurface += d;
     }
     else paved += d;
-
-    // Abschnitte ohne Wegetyp sind Luftlinie: BRouter zieht eine gerade
-    // Verbindung, wenn ein Punkt abseits des Wegenetzes liegt. Das sieht
-    // auf der Karte aus wie eine Route quer durchs Gelände – und ist es auch.
-    if (!s.tags.highway && s.tags.route !== 'ferry') beeline += d;
 
     if (s.noise >= 3) loud += d;
     if (s.traffic >= 4) busy += d;
@@ -398,24 +441,30 @@ export function quality(segments, total) {
   if (run >= LANG) longRuns++;
 
   const pc = v => Math.round(100 * v / total);
+  // Belag und Wegecharakter beziehen sich auf den Teil, den man fährt.
+  const pcR = v => ridable ? Math.round(100 * v / ridable) : 0;
   return {
-    pavedPct: pc(paved), unpavedPct: pc(unpaved), mainroadPct: pc(mainroad),
+    ridableMeters: Math.round(ridable),
+    pavedPct: pcR(paved), unpavedPct: pcR(unpaved), mainroadPct: pcR(mainroad),
     mainroadMeters: Math.round(mainroad),
     unpavedMeters: Math.round(unpaved),
-    unknownSurfacePct: pc(unknownSurface), unknownSurfaceMeters: Math.round(unknownSurface),
-    beelineMeters: Math.round(beeline),
-    onRoutePct: pc(onRoute), officialPct: pc(official),
-    offRoutePct: pc(total - onRoute - official),
+    unknownSurfacePct: pcR(unknownSurface), unknownSurfaceMeters: Math.round(unknownSurface),
+    // Fähre und Luftlinie als Anteil der ganzen Strecke, nicht des
+    // gefahrenen Teils – sonst verschwindet gerade das Auffällige.
+    beelineMeters: Math.round(beeline), beelinePct: pc(beeline),
+    ferryMeters: Math.round(ferry), ferryPct: pc(ferry),
+    onRoutePct: pcR(onRoute), officialPct: pcR(official),
+    offRoutePct: pcR(ridable - onRoute - official),
     onRouteMeters: Math.round(onRoute),
     // Diese drei nur, wenn der Server die Klassen überhaupt mitgeliefert hat.
-    naturePct: hasForest ? pc(nature) : null,
-    loudPct:   hasNoise  ? pc(loud)   : null,
-    busyPct:   hasTraffic ? pc(busy)  : null,
-    sidepathPct: hasNoise ? pc(sidepathish) : null,
+    naturePct: hasForest ? pcR(nature) : null,
+    loudPct:   hasNoise  ? pcR(loud)   : null,
+    busyPct:   hasTraffic ? pcR(busy)  : null,
+    sidepathPct: hasNoise ? pcR(sidepathish) : null,
     sidepathLongest: hasNoise ? Math.round(longestRun) : null,
     sidepathLongRuns: hasNoise ? longRuns : null,
     loudMeters: hasNoise ? Math.round(loud) : null,
-    townPct: hasTown ? pc(town) : null,
+    townPct: hasTown ? pcR(town) : null,
     townMeters: hasTown ? Math.round(town) : null,
     measuredNature: hasForest, measuredNoise: hasNoise, measuredTown: hasTown
   };
