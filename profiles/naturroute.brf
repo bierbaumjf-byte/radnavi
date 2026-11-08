@@ -33,7 +33,7 @@ assign   river_weight      = 0.8   # %river_weight% | Gewicht Gewaesser (0-4) | 
 assign   town_weight       = 2.5   # %town_weight% | Gewicht Ortsumfahrung (0-4) | number
 assign   cycleroute_weight = 3.5   # %cycleroute_weight% | Zuschlag abseits ausgeschilderter Radrouten (0-8) | number
 assign   sidepath_penalty  = 5.0   # %sidepath_penalty% | Zuschlag fuer Radwege an lauten Strassen (0-8) | number
-assign   unpaved_extra     = 2.0   # %unpaved_extra% | Zuschlag fuer unbefestigte Wege (0-8) | number
+assign   unpaved_extra     = 4.5   # %unpaved_extra% | Zuschlag fuer unbefestigte Wege (0-8) | number
 assign   unpavedPenalty    = 2.5   # %unpavedPenalty% | Zuschlag nach Wegequalitaet (grade1-5) | number
 
 # --- Hoehenmeter ---
