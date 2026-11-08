@@ -1,0 +1,445 @@
+# *** Naturroute ***
+# Vorrang fuer ausgeschilderte Radrouten, sonst ruhige asphaltierte
+# Nebenstrassen mit wenig Verkehr, wenig Laerm und viel Natur.
+# Radwege unmittelbar neben Autostrassen werden stark verteuert, aber
+# nicht verboten - kurze Lueckenschluesse bleiben moeglich.
+# Abgeleitet vom BRouter-Trekking-Profil.
+
+---context:global   # following code refers to global config
+
+assign validForBikes = true
+
+# --- Grundschalter ---
+assign   allow_steps              = false  # %allow_steps% | Treppen erlauben | boolean
+assign   allow_ferries            = true   # %allow_ferries% | Faehren erlauben | boolean
+assign   ignore_cycleroutes       = false  # %ignore_cycleroutes% | Ausgeschilderte Radrouten ignorieren | boolean
+assign   stick_to_cycleroutes     = false  # %stick_to_cycleroutes% | Nur ausgeschilderten Radrouten folgen | boolean
+assign   use_proposed_cycleroutes = false  # %use_proposed_cycleroutes% | Geplante Radrouten mitnutzen | boolean
+assign   avoid_unsafe             = true   # %avoid_unsafe% | Strassen ohne Radhinweis meiden | boolean
+assign   add_beeline              = true   # %add_beeline% | Luftlinie zu entfernten Start-/Zielpunkten | boolean
+
+# --- Die vier Wuensche: ruhig, verkehrsarm, naturnah, ortsfern ---
+assign   consider_noise           = true   # %consider_noise% | Laermarme Route bevorzugen | boolean
+assign   consider_traffic         = true   # %consider_traffic% | Verkehrsarme Route bevorzugen | boolean
+assign   consider_forest          = true   # %consider_forest% | Wald und Parks bevorzugen | boolean
+assign   consider_river           = true   # %consider_river% | Fluesse und Seen bevorzugen | boolean
+assign   consider_town            = true   # %consider_town% | Ortskerne umfahren | boolean
+
+# --- Gewichte: hier dreht man an der Streckencharakteristik ---
+assign   noise_weight      = 2.0   # %noise_weight% | Gewicht Laermvermeidung (0-4) | number
+assign   traffic_weight    = 2.0   # %traffic_weight% | Gewicht Verkehrsvermeidung (0-4) | number
+assign   forest_weight     = 1.6   # %forest_weight% | Gewicht Natur/Wald (0-4) | number
+assign   river_weight      = 0.8   # %river_weight% | Gewicht Gewaesser (0-4) | number
+assign   town_weight       = 1.0   # %town_weight% | Gewicht Ortsumfahrung (0-4) | number
+assign   cycleroute_weight = 3.5   # %cycleroute_weight% | Zuschlag abseits ausgeschilderter Radrouten (0-8) | number
+assign   sidepath_penalty  = 5.0   # %sidepath_penalty% | Zuschlag fuer Radwege an lauten Strassen (0-8) | number
+assign   unpaved_extra     = 2.0   # %unpaved_extra% | Zuschlag fuer unbefestigte Wege (0-8) | number
+assign   unpavedPenalty    = 2.5   # %unpavedPenalty% | Zuschlag nach Wegequalitaet (grade1-5) | number
+
+# --- Hoehenmeter ---
+assign   consider_elevation       = true   # %consider_elevation% | Hoehenmeter sparen | boolean
+assign downhillcost       = 60    # %downhillcost% | Kosten bergab | number
+assign downhillcutoff     = 1.5   # %downhillcutoff% | Steigungen darunter (%) zaehlen nicht | number
+assign uphillcost         = 0     # %uphillcost% | Kosten bergauf | number
+assign uphillcutoff       = 1.5   # %uphillcutoff% | Steigungen darunter (%) zaehlen nicht | number
+
+assign downhillcost       = if consider_elevation then downhillcost else 0
+assign uphillcost         = if consider_elevation then uphillcost else 0
+
+# --- Fahrzeitmodell ---
+assign totalMass  = 90     # %totalMass% | Masse Rad + Fahrer in kg | number
+assign maxSpeed   = 45     # %maxSpeed% | Maximalgeschwindigkeit km/h | number
+assign S_C_x      = 0.225  # %S_C_x% | Luftwiderstandsflaeche m^2 | number
+assign C_r        = 0.01   # %C_r% | Rollwiderstand | number
+assign bikerPower = 100    # %bikerPower% | Dauerleistung in W | number
+
+# --- Abbiegehinweise ---
+assign turnInstructionMode          = 1     # %turnInstructionMode% | Modus Abbiegehinweise | [0=none, 1=auto-choose, 2=locus-style, 3=osmand-style, 4=comment-style, 5=gpsies-style, 6=orux-style, 7=locus-old-style]
+assign turnInstructionCatchingRange = 40    # %turnInstructionCatchingRange% | Hinweise innerhalb dieser Distanz (m) zusammenfassen | number
+assign turnInstructionRoundabouts   = true  # %turnInstructionRoundabouts% | Eigene Hinweise fuer Kreisverkehre | boolean
+assign considerTurnRestrictions     = true  # %considerTurnRestrictions% | Abbiegeverbote beachten | boolean
+
+assign correctMisplacedViaPoints = true  # %correctMisplacedViaPoints% | Umwege durch Zwischenziele entfernen | boolean
+assign correctMisplacedViaPointsDistance = 400 # %correctMisplacedViaPointsDistance% | Nur Umwege unter dieser Laenge (m) entfernen | number
+
+assign processUnusedTags            = false # %processUnusedTags% | Unbenutzte Tags ausgeben | boolean
+
+---context:way   # following code refers to way-tags
+
+# classifier constants
+assign classifier_none  = 1
+assign classifier_ferry = 2
+
+#
+# pre-calculate some logical expressions
+#
+
+assign any_cycleroute =
+  if not use_proposed_cycleroutes then
+     if      route_bicycle_icn=yes then true
+     else if route_bicycle_ncn=yes then true
+     else if route_bicycle_rcn=yes then true
+     else if route_bicycle_lcn=yes then true
+     else false
+  else
+     if      route_bicycle_icn=yes|proposed then true
+     else if route_bicycle_ncn=yes|proposed then true
+     else if route_bicycle_rcn=yes|proposed then true
+     else if route_bicycle_lcn=yes|proposed then true
+     else false
+
+assign nodeaccessgranted =
+     if any_cycleroute then true
+     else lcn=yes
+
+# Viele oertliche Netze haengen nicht an einer Relation, sondern
+# stehen als lcn=yes am Weg selbst. Beides zaehlt als ausgeschildert.
+assign is_ldcr =
+     if ignore_cycleroutes then false
+     else or any_cycleroute lcn=yes
+
+assign hasbikerouteoraccess =
+       or bicycle_road=yes or cyclestreet=yes or bicycle=yes|permissive|designated lcn=yes
+
+assign hascycleway = not
+  and ( or cycleway= cycleway=no|none ) and ( or cycleway:left= cycleway:left=no ) and ( or cycleway:right= cycleway:right=no ) ( or cycleway:both= cycleway:both=no )
+
+assign isbike = or hasbikerouteoraccess hascycleway
+
+assign ispaved = or surface=paved|asphalt|concrete smoothness=excellent|good
+assign isroughpaved = surface=paving_stones|sett|cobblestone|grass_paver
+assign isunpaved = not or ispaved or isroughpaved ( and surface= smoothness= )
+assign probablyGood = or ispaved and ( or isbike highway=footway ) not isunpaved
+
+#
+# "Offiziell markiert" in drei Stufen:
+#   1. Teil eines ausgeschilderten Radroutennetzes (is_ldcr)      - frei
+#   2. Fahrradstrasse oder als Radweg ausgewiesener Weg           - kleiner Zuschlag
+#   3. alles uebrige                                              - voller Zuschlag
+#
+# Ein Verbot waere unbrauchbar: von der Haustuer bis zur naechsten
+# ausgeschilderten Route fuehrt fast immer ein Stueck normale Strasse.
+# Deshalb ein Zuschlag, der hoch genug ist, dass die Route selbst
+# grosse Umwege in Kauf nimmt, um auf das Netz zu kommen.
+#
+assign is_official_bikeway =
+  or bicycle_road=yes
+  or cyclestreet=yes
+  or highway=cycleway
+     bicycle=designated
+
+assign off_route_cost =
+       if is_ldcr             then 0
+  else if is_official_bikeway then multiply 0.3 cycleroute_weight
+  else cycleroute_weight
+
+#
+# Laerm: der wichtigste Hebel. Ein Radweg direkt neben einer
+# Autostrasse erbt deren Laermklasse und wird damit teuer.
+#
+assign noise_raw =
+       if      estimated_noise_class=  then 0
+  else if estimated_noise_class=1 then 0.3
+  else if estimated_noise_class=2 then 0.7
+  else if estimated_noise_class=3 then 1.3
+  else if estimated_noise_class=4 then 2.2
+  else if estimated_noise_class=5 then 3.2
+  else if estimated_noise_class=6 then 4.5
+  else 0
+
+assign noise_penalty = if consider_noise then multiply noise_weight noise_raw else 0
+
+#
+# Verkehr. Unbekannte Verkehrsklasse bekommt einen kleinen Zuschlag,
+# damit im Zweifel der ruhigere Weg gewinnt.
+#
+# Keine Verkehrsklasse heisst in der Praxis "abseits jeder Hauptstrasse",
+# nicht "unbekannt" - daher kein Zuschlag.
+assign traffic_raw =
+       if      estimated_traffic_class=  then 0
+  else if estimated_traffic_class=1 then 0
+  else if estimated_traffic_class=2 then 0.2
+  else if estimated_traffic_class=3 then 0.6
+  else if estimated_traffic_class=4 then 1.4
+  else if estimated_traffic_class=5 then 2.4
+  else if estimated_traffic_class=6 then 3.6
+  else if estimated_traffic_class=7 then 5.0
+  else 0
+
+assign traffic_penalty = if consider_traffic then multiply traffic_weight traffic_raw else 0
+
+#
+# Natur: Zuschlag fuer alles, was NICHT in Wald oder Park liegt.
+#
+assign forest_raw =
+       if      estimated_forest_class=  then 0.8
+  else if estimated_forest_class=1 then 0.5
+  else if estimated_forest_class=2 then 0.4
+  else if estimated_forest_class=3 then 0.25
+  else if estimated_forest_class=4 then 0.15
+  else if estimated_forest_class=5 then 0.07
+  else if estimated_forest_class=6 then 0
+  else 1.0
+
+assign no_forest_penalty = if consider_forest then multiply forest_weight forest_raw else 0
+
+#
+# Gewaesser: leichter Bonus fuer Wege an Fluss und See.
+#
+assign river_raw =
+       if      estimated_river_class=  then 1.0
+  else if estimated_river_class=1 then 0.65
+  else if estimated_river_class=2 then 0.5
+  else if estimated_river_class=3 then 0.35
+  else if estimated_river_class=4 then 0.2
+  else if estimated_river_class=5 then 0.05
+  else if estimated_river_class=6 then 0
+  else 1.0
+
+assign no_river_penalty = if consider_river then multiply river_weight river_raw else 0
+
+#
+# Ortskerne umfahren.
+#
+assign town_raw =
+       if      estimated_town_class=  then 0
+  else if estimated_town_class=1 then 0.4
+  else if estimated_town_class=2 then 0.7
+  else if estimated_town_class=3 then 1.0
+  else if estimated_town_class=4 then 1.2
+  else if estimated_town_class=5 then 1.4
+  else if estimated_town_class=6 then 1.6
+  else 0
+
+assign town_penalty = if consider_town then multiply town_weight town_raw else 0
+
+#
+# "Radweg neben der Autostrasse": ein radwegartiger Weg mit hoher
+# Laermklasse liegt praktisch immer an einer Hauptstrasse. Zusaetzlicher
+# Zuschlag, damit solche Abschnitte nur als kurzer Lueckenschluss
+# gewaehlt werden.
+#
+assign is_cycleway_like = or highway=cycleway or highway=path highway=footway
+assign is_loud          = estimated_noise_class=3|4|5|6
+assign sidepath_cost    = if ( and is_cycleway_like is_loud ) then sidepath_penalty else 0
+
+# Gehwege sind kein Radweg.
+assign sidewalk_cost    = if footway=sidewalk then 2.0 else 0
+
+# Asphalt-Vorliebe unabhaengig vom Wegetyp.
+assign unpaved_cost     = if isunpaved then unpaved_extra
+                          else if isroughpaved then 0.6
+                          else 0
+
+#
+# this is the cost (in Meter) for a 90-degree turn
+#
+assign turncost = if is_ldcr then 0
+                  else if junction=roundabout then 0
+                  else 90
+
+assign initialclassifier =
+     if route=ferry then classifier_ferry
+     else classifier_none
+
+assign initialcost =
+     if ( equal initialclassifier classifier_ferry ) then 10000
+     else 0
+
+assign defaultaccess =
+       if access= then not motorroad=yes
+       else if access=private|no then false
+       else true
+
+assign bikeaccess =
+       if bicycle= then
+       (
+         if bicycle_road=yes then true
+         else if vehicle= then ( if highway=footway then false else defaultaccess )
+         else not vehicle=private|no
+       )
+       else not bicycle=private|no|dismount|use_sidepath
+
+assign footaccess =
+       if bicycle=dismount then true
+       else if foot= then defaultaccess
+       else not foot=private|no|use_sidepath
+
+assign accesspenalty =
+       if bikeaccess then 0
+       else if footaccess then 4
+       else if any_cycleroute then 15
+       else if bicycle=use_sidepath then 25
+       else 10000
+
+assign badoneway =
+       if reversedirection=yes then
+         if oneway:bicycle=yes then true
+         else if oneway= then junction=roundabout
+         else oneway=yes|true|1
+       else oneway=-1
+
+assign onewaypenalty =
+       if ( badoneway ) then
+       (
+         if (
+           and hascycleway
+           or and cycleway:left=lane|track|shared_lane|share_busway
+                  cycleway:left:oneway=no|-1
+           or and cycleway:right=lane|track|shared_lane|share_busway
+                  cycleway:right:oneway=no|-1
+           or and cycleway:both=lane|track|shared_lane|share_busway
+                  or cycleway:left:oneway=no|-1
+                     cycleway:right:oneway=no|-1
+           or cycleway=opposite|opposite_lane|opposite_track
+           or cycleway:left=opposite|opposite_lane|opposite_track
+              cycleway:right=opposite|opposite_lane|opposite_track
+                                                             ) then 0
+         else if ( oneway:bicycle=no                         ) then 0
+         else if ( not footaccess                            ) then 100
+         else if ( junction=roundabout|circular              ) then 60
+         else if ( highway=primary|primary_link              ) then 50
+         else if ( highway=secondary|secondary_link          ) then 30
+         else if ( highway=tertiary|tertiary_link            ) then 20
+         else 4.0
+       )
+       else 0.0
+
+#
+# costfactor
+#
+assign isresidentialorliving = or highway=residential|living_street living_street=yes
+assign costfactor
+
+  if ( and highway= not route=ferry ) then 10000
+
+  else if ( highway=motorway|motorway_link          ) then   10000
+  else if ( highway=proposed|abandoned|construction ) then   10000
+
+  else min 9999
+
+  add town_penalty
+  add no_forest_penalty
+  add no_river_penalty
+  add noise_penalty
+  add traffic_penalty
+  add off_route_cost
+  add sidepath_cost
+  add sidewalk_cost
+  add unpaved_cost
+
+  add max onewaypenalty accesspenalty
+
+  if ( highway=steps ) then ( if allow_steps then 40 else 10000 )
+  else if ( route=ferry   ) then ( if allow_ferries then 5.67 else 10000 )
+
+  #
+  # Ausgeschilderte Radrouten sind gut, aber nicht blind zu folgen:
+  # 1.15 statt 1, damit Laerm- und Verkehrszuschlaege greifen koennen.
+  #
+  else if ( is_ldcr ) then 1.15
+  else
+  add ( if stick_to_cycleroutes then 0.5 else 0.05 )
+
+  if      ( highway=pedestrian                ) then ( if isbike then ( if hascycleway then 1.3 else 2.4 ) else 3 )
+  else if ( highway=bridleway                 ) then 5
+  else if ( highway=cycleway                  ) then 1.0
+  else if ( isresidentialorliving             ) then ( if isunpaved then 1.5 else 1.05 )
+  else if ( highway=service                   ) then ( if isunpaved then 1.7 else 1.25 )
+
+  else if ( highway=track|road|path|footway ) then
+  (
+    if      ( tracktype=grade1 ) then ( if probablyGood then 1.0 else add 1.0 multiply 0.3 unpavedPenalty )
+    else if ( tracktype=grade2 ) then ( if probablyGood then 1.1 else add 1.1 multiply 0.9 unpavedPenalty )
+    else if ( tracktype=grade3 ) then ( if probablyGood then 1.5 else add 1.5 multiply 1.5 unpavedPenalty )
+    else if ( tracktype=grade4 ) then ( if probablyGood then 2.0 else add 2.0 multiply 3.0 unpavedPenalty )
+    else if ( tracktype=grade5 ) then ( if probablyGood then 3.0 else add 3.0 multiply 2.0 unpavedPenalty )
+    else                              ( if probablyGood then 1.0 else add 1.0 multiply 4.0 unpavedPenalty )
+  )
+
+  else add ( if ( and avoid_unsafe not isbike ) then 2 else 0 )
+
+  #
+  # Strassen. Anders als im Trekking-Profil gibt ein begleitender
+  # Radweg auf Haupt- und Durchgangsstrassen keinen grossen Rabatt:
+  # genau diese Wege sollen gemieden werden. Guenstigste Klasse ist
+  # highway=unclassified, also die Nebenstrasse und der Wirtschaftsweg.
+  #
+       if ( highway=trunk|trunk_link         ) then ( if isbike then  8.0 else 20  )
+  else if ( highway=primary|primary_link     ) then ( if isbike then  2.8 else  7  )
+  else if ( highway=secondary|secondary_link ) then ( if isbike then  1.9 else  3.2 )
+  else if ( highway=tertiary|tertiary_link   ) then ( if isbike then  1.2 else  1.6 )
+  else if ( highway=unclassified             ) then ( if isbike then  1.0 else  1.05 )
+
+  else 2.0
+
+
+# way priorities used for voice hint generation
+
+assign priorityclassifier =
+
+  if      ( highway=motorway                          ) then  30
+  else if ( highway=motorway_link                     ) then  29
+  else if ( highway=trunk                             ) then  28
+  else if ( highway=trunk_link                        ) then  27
+  else if ( highway=primary                           ) then  26
+  else if ( highway=primary_link                      ) then  25
+  else if ( highway=secondary                         ) then  24
+  else if ( highway=secondary_link                    ) then  23
+  else if ( highway=tertiary                          ) then  22
+  else if ( highway=tertiary_link                     ) then  21
+  else if ( highway=unclassified                      ) then  20
+  else if ( isresidentialorliving                     ) then  6
+  else if ( highway=service                           ) then  6
+  else if ( highway=cycleway                          ) then  6
+  else if ( or bicycle=designated bicycle_road=yes    ) then  6
+  else if ( highway=track                             ) then if tracktype=grade1 then 6 else 4
+  else if ( highway=bridleway|road|path|footway       ) then  4
+  else if ( highway=steps                             ) then  2
+  else if ( highway=pedestrian                        ) then  2
+  else 0
+
+assign isbadoneway = not equal onewaypenalty 0
+assign isgoodoneway = if reversedirection=yes then oneway=-1
+                      else if oneway= then junction=roundabout else oneway=yes|true|1
+assign isroundabout = junction=roundabout
+assign islinktype = highway=motorway_link|trunk_link|primary_link|secondary_link|tertiary_link
+assign isgoodforcars = if greater priorityclassifier 6 then true
+                  else if ( or isresidentialorliving highway=service ) then true
+                  else if ( and highway=track tracktype=grade1 ) then true
+                  else false
+
+assign classifiermask add          isbadoneway
+                      add multiply isgoodoneway   2
+                      add multiply isroundabout   4
+                      add multiply islinktype     8
+                          multiply isgoodforcars 16
+
+assign dummyUsage = smoothness=
+
+---context:node  # following code refers to node tags
+
+assign defaultaccess =
+       if ( access= ) then true
+       else if ( access=private|no ) then false
+       else true
+
+assign bikeaccess =
+       if nodeaccessgranted=yes then true
+       else if bicycle= then
+       (
+         if vehicle= then defaultaccess
+         else not vehicle=private|no
+       )
+       else not bicycle=private|no|dismount
+
+assign footaccess =
+       if bicycle=dismount then true
+       else if foot= then defaultaccess
+       else not foot=private|no
+
+assign initialcost =
+       if or highway=traffic_signals and highway=crossing crossing=traffic_signals then 20
+       else
+       if bikeaccess then 0
+       else ( if footaccess then 100 else 1000000 )
