@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------ */
-/*  RadNavi – Oberfläche. Mobil zuerst, große Flächen für die Hand     */
+/*  Jans Super Fahrrad Navi – Oberfläche. Mobil zuerst, große Flächen  */
 /*  am Lenker, ruhige Farben.                                          */
 /* ------------------------------------------------------------------ */
 
@@ -374,6 +374,39 @@ body.navigating .toast, body.sheet-collapsed .toast { bottom: 80px; }
 .busy {
   position: fixed; inset: 0; z-index: 950; display: grid; place-items: center;
   background: rgba(0,0,0,.18); pointer-events: all;
+}
+
+/* ---------------------------- Startbild --------------------------- *
+ *  Liegt über allem, verschwindet aber von selbst wieder. Das
+ *  hidden-Attribut schaltet es ab – deshalb hier kein display, das
+ *  dagegen gewinnen könnte (siehe die Regel ganz unten).
+ * ------------------------------------------------------------------ */
+.splash {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; padding: 24px;
+  background: var(--bg);
+  transition: opacity .45s ease;
+}
+.splash.weg { opacity: 0; pointer-events: none; }
+.splash img {
+  max-width: min(78vw, 420px); max-height: 52vh;
+  object-fit: contain;
+  border-radius: 18px; box-shadow: var(--shadow);
+  /* Feste helle Fläche, nicht var(--bg): der gezeichnete Radfahrer ist
+     dunkelgrün und würde im Nachtmodus mit dem Hintergrund verschmelzen. */
+  background: #f4f3ee; padding: 10px;
+}
+.splashname {
+  font-size: clamp(22px, 6.5vw, 34px); font-weight: 700;
+  color: var(--accent); text-align: center; line-height: 1.15;
+}
+
+/* Vorschau in den Einstellungen */
+.bildzeile { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+.bildzeile img {
+  width: 54px; height: 54px; object-fit: cover;
+  border-radius: 10px; border: 1px solid var(--line);
 }
 .busy span {
   width: 38px; height: 38px; border-radius: 50%;
