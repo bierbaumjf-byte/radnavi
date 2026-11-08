@@ -97,7 +97,12 @@ export async function renameWeg(id, name) {
 
 const SETTINGS_KEY = 'radnavi.settings';
 
-export const SETTINGS_VERSION = 2;
+export const SETTINGS_VERSION = 3;
+
+/** Ab diesem Reglerwert meidet die Route Ortslagen tatsächlich. Darunter
+ *  gewinnt der kürzere Weg durch den Ort. Nachgemessen: 1,5 ändert nichts,
+ *  2,5 senkt den Ortsanteil von 20 % auf 5 %. */
+export const TOWN_WIRKSAM = 2.5;
 
 export const defaultSettings = {
   v: SETTINGS_VERSION,
@@ -133,6 +138,18 @@ export function loadSettings() {
     if (!stored.v || stored.v < 2) {
       s.layer = 'osm';
       s.tune = null;        // neue Profilwerte greifen lassen
+    }
+
+    // Fassung 3: "Stadtgebiete meiden" war ausdrücklich gewünscht, stand
+    // in den gespeicherten Reglern aber auf einem Wert ohne Wirkung.
+    // Angehoben wird nur dieser eine Regler – alle anderen bleiben, wie
+    // der Nutzer sie eingestellt hat. Wer wieder durch die Orte fahren
+    // will, zieht ihn einfach zurück; das bleibt dann erhalten.
+    if ((!stored.v || stored.v < 3) && s.tune && s.tune.town < TOWN_WIRKSAM) {
+      s.tune = { ...s.tune, town: TOWN_WIRKSAM };
+    }
+
+    if (!stored.v || stored.v < SETTINGS_VERSION) {
       s.v = SETTINGS_VERSION;
       saveSettings(s);
     }

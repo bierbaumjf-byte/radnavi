@@ -37,13 +37,13 @@ export const PRESETS = {
   natur: {
     label: 'Radrouten-Naturroute',
     custom: true,
-    tune: { route: 3.5, noise: 2.0, traffic: 2.0, forest: 1.6, river: 0.8, town: 1.0,
+    tune: { route: 3.5, noise: 2.0, traffic: 2.0, forest: 1.6, river: 0.8, town: 2.5,
             sidepath: 5.0, unpaved: 2.0, hill: 60, steps: false, ferry: true }
   },
   'natur+': {
     label: 'Radrouten streng',
     custom: true,
-    tune: { route: 6.0, noise: 3.2, traffic: 3.2, forest: 2.6, river: 1.4, town: 1.6,
+    tune: { route: 6.0, noise: 3.2, traffic: 3.2, forest: 2.6, river: 1.4, town: 3.5,
             sidepath: 7.0, unpaved: 3.5, hill: 60, steps: false, ferry: true }
   },
   trekking: { label: 'Trekking', custom: false, server: 'trekking' },
@@ -321,6 +321,7 @@ function parseMessages(messages) {
       noise: tags.estimated_noise_class ? Number(tags.estimated_noise_class) : null,
       traffic: tags.estimated_traffic_class ? Number(tags.estimated_traffic_class) : null,
       forest: tags.estimated_forest_class ? Number(tags.estimated_forest_class) : null,
+      town: tags.estimated_town_class ? Number(tags.estimated_town_class) : null,
       onRoute: isSignedRoute(tags),
       official: isOfficialBikeway(tags)
     });
@@ -337,7 +338,7 @@ function parseMessages(messages) {
 export function quality(segments, total) {
   if (!segments.length || !total) return null;
   let paved = 0, unpaved = 0, loud = 0, busy = 0, nature = 0, mainroad = 0, sidepathish = 0;
-  let onRoute = 0, official = 0;
+  let onRoute = 0, official = 0, town = 0;
 
   // Begleitradwege dürfen nur kurze Lückenschlüsse sein. Dafür zählt
   // nicht der Gesamtanteil, sondern das längste Stück am Stück: zehn
@@ -352,6 +353,10 @@ export function quality(segments, total) {
   const hasForest = segments.some(s => s.forest != null);
   const hasNoise  = segments.some(s => s.noise != null);
   const hasTraffic = segments.some(s => s.traffic != null);
+  // Ortslage meldet BRouter nur dort, wo wirklich bebautes Gebiet ist –
+  // ausserhalb fehlt die Klasse ganz. "Keine Angabe" heisst hier also
+  // "freies Land", anders als bei Wald und Laerm.
+  const hasTown = segments.some(s => s.town != null);
 
   for (const s of segments) {
     const d = s.length;
@@ -365,6 +370,8 @@ export function quality(segments, total) {
     if (s.traffic >= 4) busy += d;
     if (s.forest >= 3) nature += d;
     if (/^(primary|secondary|trunk)/.test(s.tags.highway || '')) mainroad += d;
+
+    if (s.town >= 1) town += d;
 
     if (s.onRoute) onRoute += d;
     else if (s.official) official += d;
@@ -396,7 +403,9 @@ export function quality(segments, total) {
     sidepathLongest: hasNoise ? Math.round(longestRun) : null,
     sidepathLongRuns: hasNoise ? longRuns : null,
     loudMeters: hasNoise ? Math.round(loud) : null,
-    measuredNature: hasForest, measuredNoise: hasNoise
+    townPct: hasTown ? pc(town) : null,
+    townMeters: hasTown ? Math.round(town) : null,
+    measuredNature: hasForest, measuredNoise: hasNoise, measuredTown: hasTown
   };
 }
 

@@ -41,6 +41,98 @@ export function bearingDelta(from, to) {
   return d;
 }
 
+/**
+ * Doppelt befahrene Stücke einer Rundtour finden.
+ *
+ * Eine echte Rundtour berührt sich höchstens an Kreuzungen. Wo sie
+ * dagegen ein Stück Weg zweimal benutzt, muss man dort umkehren – und
+ * genau das soll nicht vorkommen.
+ *
+ * Verfahren: jeder Punkt kommt in eine Zelle eines groben Gitters.
+ * Liegt in derselben oder einer Nachbarzelle ein Punkt, der entlang der
+ * Strecke weit entfernt ist, war man hier schon einmal. Das Gitter hält
+ * den Aufwand linear; ein Vergleich jeder mit jeder Stelle wäre bei
+ * mehreren tausend Punkten zu langsam.
+ *
+ * @param coords   Linienzug [[lon, lat], …]
+ * @param zelle    Kantenlänge der Gitterzelle in Metern
+ * @param abstand  Ab welcher Entfernung entlang der Strecke (m) ein
+ *                 zweiter Besuch als Wiederholung zählt und nicht als
+ *                 Kurve. 400 m lässt Kreisel und Schleifen durch.
+ * @returns {{ meter:number, laengste:number, anteil:number, stelle:number }}
+ *          stelle = Punktnummer in der Mitte des längsten doppelten
+ *          Stücks, oder -1. Damit lässt sich der Zwischenpunkt finden,
+ *          der die Stichfahrt verursacht hat.
+ */
+export function overlapStats(coords, zelle = 25, abstand = 400) {
+  const leer = { meter: 0, laengste: 0, anteil: 0, stelle: -1 };
+  const n = coords && coords.length;
+  if (!n || n < 4) return leer;
+
+  const cum = cumulative(coords);
+  const gesamt = cum[n - 1];
+  if (!gesamt) return leer;
+
+  // Gradmaß in Metermaß umrechnen, einmal für die mittlere Breite.
+  const latMitte = coords[Math.floor(n / 2)][1];
+  const mProGradLat = 111320;
+  const mProGradLon = 111320 * Math.cos(rad(latMitte));
+
+  const schluessel = (x, y) => x + ',' + y;
+  const gitter = new Map();
+  const zx = new Int32Array(n), zy = new Int32Array(n);
+
+  for (let i = 0; i < n; i++) {
+    zx[i] = Math.round(coords[i][0] * mProGradLon / zelle);
+    zy[i] = Math.round(coords[i][1] * mProGradLat / zelle);
+    const k = schluessel(zx[i], zy[i]);
+    const liste = gitter.get(k);
+    if (liste) liste.push(i); else gitter.set(k, [i]);
+  }
+
+  const doppelt = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    let gefunden = false;
+    for (let dx = -1; dx <= 1 && !gefunden; dx++) {
+      for (let dy = -1; dy <= 1 && !gefunden; dy++) {
+        const liste = gitter.get(schluessel(zx[i] + dx, zy[i] + dy));
+        if (!liste) continue;
+        for (const j of liste) {
+          if (Math.abs(cum[j] - cum[i]) < abstand) continue;
+          if (dist(coords[i], coords[j]) > zelle * 1.5) continue;
+          gefunden = true;
+          break;
+        }
+      }
+    }
+    doppelt[i] = gefunden ? 1 : 0;
+  }
+
+  // Einzelne Ausreißer glätten: ein Punkt allein ist eine Kreuzung,
+  // kein Stück Weg. Erst eine Kette zählt.
+  let meter = 0, lauf = 0, laengste = 0;
+  let beginn = -1, bestBeginn = -1, bestEnde = -1;
+  for (let i = 1; i < n; i++) {
+    const d = cum[i] - cum[i - 1];
+    if (doppelt[i] && doppelt[i - 1]) {
+      if (beginn < 0) beginn = i - 1;
+      meter += d;
+      lauf += d;
+      if (lauf > laengste) { laengste = lauf; bestBeginn = beginn; bestEnde = i; }
+    } else {
+      lauf = 0;
+      beginn = -1;
+    }
+  }
+
+  return {
+    meter: Math.round(meter),
+    laengste: Math.round(laengste),
+    anteil: Math.round(meter / gesamt * 100),
+    stelle: bestBeginn < 0 ? -1 : Math.floor((bestBeginn + bestEnde) / 2)
+  };
+}
+
 /** Gesamtlänge eines Linienzugs in Metern. */
 export function lineLength(coords) {
   let sum = 0;

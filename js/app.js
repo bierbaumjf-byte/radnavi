@@ -14,7 +14,7 @@ import * as G from './geocode.js';
 import { parseFile, parseGPX, downloadGPX } from './gpx.js';
 import { Navigator, Recorder, Voice, locateOnce } from './nav.js';
 import {
-  fmtKm, fmtDuration, fmtClock, fmtDistShort, destination, dist
+  fmtKm, fmtDuration, fmtClock, fmtDistShort, destination, dist, overlapStats
 } from './geo.js';
 
 /* --------------------------- Zustand ------------------------------ */
@@ -358,7 +358,22 @@ function renderQuality(r) {
 
   let first = `${q.pavedPct} % befestigt`;
   if (q.measuredNature) first += ` · ${q.naturePct} % durch Wald und Grün`;
+  if (q.townPct != null) first += ` · ${q.townPct} % durch Ortslage`;
   notes.push(first);
+
+  // Rundtour: wurde ein Stück zweimal gefahren? Das sieht man der
+  // Länge nicht an, und es ist das Erste, was auf einer Runde stört.
+  const rund = r.coords && r.coords.length > 3 &&
+               dist(r.coords[0], r.coords[r.coords.length - 1]) < 150;
+  if (rund) {
+    const d = overlapStats(r.coords);
+    if (d.laengste >= 600) {
+      notes.push(`⚠ ${fmtDistShort(d.laengste)} am Stück zweimal gefahren ` +
+                 `(${d.anteil} % der Runde) – andere Richtung oder Länge versuchen`);
+    } else {
+      notes.push('Runde ohne nennenswerte Wiederholung');
+    }
+  }
 
   if (!q.measuredNature) {
     notes.push('Dieses Profil bewertet Lärm und Natur nicht – für die Angaben „Radrouten-Naturroute“ wählen.');
@@ -419,12 +434,37 @@ function clearRouteDisplay() {
 
 /* --------------------------- Rundtouren --------------------------- */
 
-/**
- * BRouter kennt keine Rundtouren. Also legen wir Zwischenziele auf
- * einen Kreis um den Start und lassen mehrere Richtungen rechnen.
- * Die Länge trifft man damit nicht genau, aber nahe genug, und man
- * sieht sofort, was dabei herauskommt.
+/*
+ * BRouter kennt keine Rundtouren. Man muss ihm Zwischenziele vorgeben.
+ *
+ * Entscheidend ist, wo diese Punkte liegen. Legt man sie sternförmig um
+ * den Start, führen der erste und der letzte Schenkel radial hinein und
+ * hinaus – meist über dieselbe Straße. Genau das ist das Umkehren, das
+ * nicht vorkommen soll.
+ *
+ * Deshalb liegt der Start hier nicht in der Mitte, sondern selbst auf
+ * dem Kreis: der Kreismittelpunkt ist um den Radius in Fahrtrichtung
+ * verschoben, und die Zwischenziele verteilen sich gleichmäßig darauf.
+ * Die Tour ist damit ein Vieleck, das durch den Start läuft, und hat
+ * keinen Schenkel, der zweimal benutzt werden müsste.
  */
+
+/** Umfang eines einbeschriebenen Vielecks: 2·k·r·sin(π/k), mal Wegfaktor. */
+const WEGFAKTOR = 1.35;           // echte Wege sind kurviger als die Sehne
+// Ecken des Vielecks, in der Reihenfolge des Ausprobierens. Das Viereck
+// lief in der Messung am saubersten, das Sechseck am zweitbesten.
+const FORMEN = [4, 6, 5];
+const formFaktor = k => 2 * k * Math.sin(Math.PI / k) * WEGFAKTOR;
+
+/** Ab hier gilt ein Stück als "zurückgefahren" und die Tour als untauglich. */
+const MAX_DOPPELT = 600;          // Meter am Stück
+
+/** Wie weit unter der Wunschlänge darf es höchstens liegen? */
+const MIN_ANTEIL = 0.8;
+
+const HIMMEL = ['Norden', 'Nordosten', 'Osten', 'Südosten',
+                'Süden', 'Südwesten', 'Westen', 'Nordwesten'];
+
 async function roundtrips() {
   const start = waypoints[0];
   if (!start) { toast('Zuerst einen Startpunkt setzen'); return; }
@@ -434,78 +474,198 @@ async function roundtrips() {
   const dirs = chosen >= 0 ? [chosen] : [35, 125, 215, 305];
 
   const box = $('#rtResults');
-  box.innerHTML = '';
+  box.innerHTML = '<div class="muted small">Suche läuft …</div>';
   busy(true);
 
   try {
+    // Genau die Feinabstimmung, die auch für jede andere Route gilt.
+    // Hier wird nichts zusätzlich verstellt – wer die Regler kennt,
+    // soll die Rundtour daran wiedererkennen.
     const resolved = await R.resolveProfile({
       server: S.server, profileKey: S.profile,
       tune: currentTune(), overrideText: S.profileOverride
     });
 
-    // Drei Punkte auf einem Kreis ergeben in Luftlinie etwa 5,2·r.
-    // Echte Wege sind kurviger, erfahrungsgemäß rund ein Drittel
-    // länger – deshalb 7,0 statt 5,2 als Startwert.
     const target = km * 1000;
-    const ring = (radius, dir) => [
-      start,
-      latlonOf(destination([start.lon, start.lat], radius, dir)),
-      latlonOf(destination([start.lon, start.lat], radius * 1.1, dir + 110)),
-      latlonOf(destination([start.lon, start.lat], radius, dir + 220)),
-      start
-    ];
-    const tryRing = async (radius, dir) => {
-      const pts = ring(radius, dir);
-      const r = await R.route({
-        server: S.server, waypoints: pts,
-        profileName: resolved.name, alternativeIdx: 0
-      });
-      return { dir, radius, route: r, waypoints: pts };
+    let anfragen = 0;
+    const MAX_ANFRAGEN = 18;
+
+    /** Vieleck durch den Start; Mittelpunkt um r in Richtung dir versetzt. */
+    const ring = (radius, dir, k) => {
+      const mitte = destination([start.lon, start.lat], radius, dir);
+      const abMitte = (dir + 180) % 360;
+      const pts = [start];
+      for (let i = 1; i < k; i++) {
+        pts.push(latlonOf(destination(mitte, radius, abMitte + i * 360 / k)));
+      }
+      pts.push(start);
+      return pts;
     };
 
-    const radius0 = target / 7.0;
-    const found = [];
-    for (const dir of dirs) {
-      try { found.push(await tryRing(radius0, dir)); }
-      catch { /* diese Richtung gibt nichts her */ }
-    }
-
-    if (!found.length) { box.innerHTML = '<div class="muted small">Keine Rundtour gefunden. Andere Länge oder Richtung versuchen.</div>'; return; }
-
-    found.sort((a, b) => Math.abs(a.route.length - target) - Math.abs(b.route.length - target));
-
-    // Den besten Vorschlag einmal nachjustieren, wenn er daneben liegt.
-    const best = found[0];
-    const off = Math.abs(best.route.length - target) / target;
-    if (off > 0.12) {
-      try {
-        const corrected = await tryRing(best.radius * (target / best.route.length), best.dir);
-        const better = Math.abs(corrected.route.length - target) < Math.abs(best.route.length - target);
-        if (better) {
-          found[0] = corrected;
-          found.sort((a, b) => Math.abs(a.route.length - target) - Math.abs(b.route.length - target));
+    /** Eine Punktfolge rechnen lassen und vermessen. */
+    const fahre = async (pts, dir, k, radius) => {
+      if (anfragen >= MAX_ANFRAGEN) return null;
+      anfragen++;
+      // Die Suche rechnet mehrere Runden durch; ohne Rückmeldung sieht
+      // das nach einer hängenden App aus.
+      box.innerHTML = `<div class="muted small">Suche läuft – ${anfragen}. Runde …</div>`;
+      let r = null;
+      for (let n = 0; n < 2 && !r; n++) {
+        try {
+          r = await R.route({ server: S.server, waypoints: pts,
+                              profileName: resolved.name, alternativeIdx: 0 });
+        } catch (e) {
+          if (n === 0) await warte(900); else return null;
         }
-      } catch { /* dann eben der erste Versuch */ }
+      }
+      if (!r) return null;
+      await warte(350);           // brouter.de mag keine Salven
+      return { dir, k, radius, route: r, waypoints: pts,
+               doppelt: overlapStats(r.coords) };
+    };
+
+    const versuch = (radius, dir, k) => fahre(ring(radius, dir, k), dir, k, radius);
+
+    /**
+     * Eine Stichfahrt kommt fast immer von einem einzelnen Zwischenziel,
+     * das in einer Sackgasse gelandet ist: man fährt hin und denselben
+     * Weg zurück. Den Übeltäter findet man an der Stelle, wo das doppelt
+     * gefahrene Stück liegt – und schiebt ihn seitwärts auf dem Kreis.
+     */
+    const ruecke = async (c, schritt) => {
+      const stelle = c.doppelt.stelle;
+      if (stelle < 0 || c.waypoints.length < 4) return null;
+      const pos = c.route.coords[stelle];
+
+      let schuld = 1, nah = Infinity;
+      for (let i = 1; i < c.waypoints.length - 1; i++) {
+        const d = dist(pos, [c.waypoints[i].lon, c.waypoints[i].lat]);
+        if (d < nah) { nah = d; schuld = i; }
+      }
+
+      const mitte = destination([start.lon, start.lat], c.radius, c.dir);
+      const abMitte = (c.dir + 180) % 360;
+      const pts = c.waypoints.slice();
+      pts[schuld] = latlonOf(destination(
+        mitte, c.radius * 0.93, abMitte + schuld * 360 / c.k + schritt));
+      return fahre(pts, c.dir, c.k, c.radius);
+    };
+
+    const kandidaten = [];
+    for (const dir of dirs) {
+      let bester = null;
+
+      for (const k of FORMEN) {
+        let radius = target / formFaktor(k);
+        let c = await versuch(radius, dir, k);
+        if (!c) continue;
+
+        // Nach unten abrunden: lieber etwas kürzer als zu lang.
+        for (let n = 0; n < 2 && c.route.length > target; n++) {
+          radius *= (target / c.route.length) * 0.97;
+          const enger = await versuch(radius, dir, k);
+          if (!enger) break;
+          c = enger;
+        }
+
+        // Stichfahrt? Den schuldigen Punkt einmal nach links, einmal
+        // nach rechts verschieben und nehmen, was besser wird.
+        if (c.doppelt.laengste > MAX_DOPPELT) {
+          const weite = 360 / c.k / 3;
+          for (const schritt of [weite, -weite]) {
+            const neu = await ruecke(c, schritt);
+            if (neu && besser(neu, c, target)) { c = neu; }
+            if (c.doppelt.laengste <= MAX_DOPPELT) break;
+          }
+        }
+
+        if (!bester || besser(c, bester, target)) bester = c;
+        if (c.doppelt.laengste <= MAX_DOPPELT && c.route.length <= target) break;
+        if (anfragen >= MAX_ANFRAGEN) break;
+      }
+      if (bester) kandidaten.push(bester);
+      if (anfragen >= MAX_ANFRAGEN) break;
     }
 
-    for (const f of found) {
-      const b = document.createElement('button');
-      const compass = ['Norden', 'Nordosten', 'Osten', 'Südosten', 'Süden', 'Südwesten', 'Westen', 'Nordwesten'][Math.round(f.dir / 45) % 8];
-      b.innerHTML = `<b>${fmtKm(f.route.length)}</b> Richtung ${compass} · ${f.route.ascend} hm bergauf`;
-      b.onclick = () => {
-        waypoints = f.waypoints.map(p => ({ lat: p.lat, lon: p.lon, name: p.name || null }));
-        routes = [{ idx: 0, route: f.route }];
-        renderWaypoints();
-        showRoute(0, { fit: true });
-        waypoints.forEach((_, i) => nameWaypoint(i));
-        toast('Rundtour übernommen – Punkte lassen sich jetzt verschieben');
-      };
-      box.appendChild(b);
+    if (!kandidaten.length) {
+      box.innerHTML = '<div class="muted small">Keine Rundtour gefunden. ' +
+        'Andere Länge oder Richtung versuchen.</div>';
+      return;
     }
+
+    kandidaten.sort((a, b) =>
+      besser(a, b, target) ? -1 : besser(b, a, target) ? 1 : 0);
+    renderRoundtrips(box, kandidaten, target);
   } catch (err) {
+    box.innerHTML = '';
     toast(err.message || 'Rundtouren fehlgeschlagen', 5000);
   } finally {
     busy(false);
+  }
+}
+
+const warte = ms => new Promise(r => setTimeout(r, ms));
+
+/**
+ * Ist a besser als b? In dieser Reihenfolge:
+ * 1. ohne längeres doppelt gefahrenes Stück
+ * 2. nicht länger als gewünscht  (abrunden, nicht aufrunden)
+ * 3. näher an der Wunschlänge von unten
+ * 4. weniger Ortslage
+ */
+function besser(a, b, target) {
+  const sauber = c => c.doppelt.laengste <= MAX_DOPPELT;
+  if (sauber(a) !== sauber(b)) return sauber(a);
+
+  const passt = c => c.route.length <= target;
+  if (passt(a) !== passt(b)) return passt(a);
+
+  if (passt(a)) {
+    const d = a.route.length - b.route.length;      // beide ≤ target: länger ist besser
+    if (Math.abs(d) > 200) return d > 0;
+  } else {
+    const d = a.route.length - b.route.length;      // beide zu lang: kürzer ist besser
+    if (Math.abs(d) > 200) return d < 0;
+  }
+
+  const ort = c => (c.route.quality && c.route.quality.townPct) || 0;
+  if (ort(a) !== ort(b)) return ort(a) < ort(b);
+  return a.doppelt.meter < b.doppelt.meter;
+}
+
+function renderRoundtrips(box, kandidaten, target) {
+  box.innerHTML = '';
+
+  const bester = kandidaten[0];
+  if (bester.route.length < target * MIN_ANTEIL) {
+    box.insertAdjacentHTML('beforeend',
+      `<div class="muted small">Mehr als ${fmtKm(bester.route.length)} ` +
+      `gibt das Wegenetz hier ohne Umkehren nicht her.</div>`);
+  }
+
+  for (const f of kandidaten) {
+    const b = document.createElement('button');
+    const himmel = HIMMEL[Math.round(f.dir / 45) % 8];
+    const q = f.route.quality;
+    const teile = [`${f.route.ascend} hm bergauf`];
+    if (q && q.townPct != null) teile.push(`${q.townPct} % Ortslage`);
+    if (f.doppelt.laengste > MAX_DOPPELT) {
+      teile.push(`<span class="rtwarn">${fmtDistShort(f.doppelt.laengste)} am Stück doppelt</span>`);
+    } else if (f.doppelt.meter > 0) {
+      teile.push(`nur ${fmtDistShort(f.doppelt.laengste)} doppelt`);
+    } else {
+      teile.push('nichts doppelt');
+    }
+    b.innerHTML = `<b>${fmtKm(f.route.length)}</b> Richtung ${himmel} · ${teile.join(' · ')}`;
+    b.onclick = () => {
+      waypoints = f.waypoints.map(p => ({ lat: p.lat, lon: p.lon, name: p.name || null }));
+      routes = [{ idx: 0, route: f.route }];
+      renderWaypoints();
+      showRoute(0, { fit: true });
+      waypoints.forEach((_, i) => nameWaypoint(i));
+      toast('Rundtour übernommen – Punkte lassen sich jetzt verschieben');
+    };
+    box.appendChild(b);
   }
 }
 
