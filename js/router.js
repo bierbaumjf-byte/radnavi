@@ -338,7 +338,7 @@ function parseMessages(messages) {
 export function quality(segments, total) {
   if (!segments.length || !total) return null;
   let paved = 0, unpaved = 0, loud = 0, busy = 0, nature = 0, mainroad = 0, sidepathish = 0;
-  let onRoute = 0, official = 0, town = 0;
+  let onRoute = 0, official = 0, town = 0, beeline = 0, unknownSurface = 0;
 
   // Begleitradwege dürfen nur kurze Lückenschlüsse sein. Dafür zählt
   // nicht der Gesamtanteil, sondern das längste Stück am Stück: zehn
@@ -363,8 +363,17 @@ export function quality(segments, total) {
     const sf = s.tags.surface;
     if (sf === 'asphalt' || sf === 'concrete' || sf === 'paved') paved += d;
     else if (sf && sf !== 'paving_stones' && sf !== 'sett' && sf !== 'cobblestone') unpaved += d;
-    else if (!sf && /track|path|bridleway/.test(s.tags.highway || '')) unpaved += d;
+    else if (!sf && /track|path|bridleway|road/.test(s.tags.highway || '')) {
+      // Feld- und Waldweg ohne Belagsangabe. Das ist kein Asphalt –
+      // getrennt gezählt, weil "unbekannt" etwas anderes ist als "Schotter".
+      unpaved += d; unknownSurface += d;
+    }
     else paved += d;
+
+    // Abschnitte ohne Wegetyp sind Luftlinie: BRouter zieht eine gerade
+    // Verbindung, wenn ein Punkt abseits des Wegenetzes liegt. Das sieht
+    // auf der Karte aus wie eine Route quer durchs Gelände – und ist es auch.
+    if (!s.tags.highway && s.tags.route !== 'ferry') beeline += d;
 
     if (s.noise >= 3) loud += d;
     if (s.traffic >= 4) busy += d;
@@ -392,6 +401,9 @@ export function quality(segments, total) {
   return {
     pavedPct: pc(paved), unpavedPct: pc(unpaved), mainroadPct: pc(mainroad),
     mainroadMeters: Math.round(mainroad),
+    unpavedMeters: Math.round(unpaved),
+    unknownSurfacePct: pc(unknownSurface), unknownSurfaceMeters: Math.round(unknownSurface),
+    beelineMeters: Math.round(beeline),
     onRoutePct: pc(onRoute), officialPct: pc(official),
     offRoutePct: pc(total - onRoute - official),
     onRouteMeters: Math.round(onRoute),

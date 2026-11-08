@@ -475,8 +475,16 @@ function renderQuality(r) {
   if (q.loudPct != null && q.loudPct >= 20) {
     notes.push(`⚠ ${q.loudPct} % in Straßenlärm – hier gibt es offenbar keine ruhige Verbindung`);
   }
-  if (q.unpavedPct >= 25) {
-    notes.push(`${q.unpavedPct} % unbefestigt – Regler „Asphalt statt Schotter“ höher stellen?`);
+  // Luftlinie: zuerst nennen, das ist der gröbste Mangel einer Route.
+  if (q.beelineMeters >= 50) {
+    notes.push(`⚠ ${fmtKm(q.beelineMeters)} Luftlinie quer durchs Gelände – dort kennt ` +
+               `die Karte keinen Weg. Den betroffenen Punkt näher an eine Straße setzen.`);
+  }
+  if (q.unpavedPct >= 12) {
+    const woher = q.unknownSurfacePct >= 5
+      ? ` (davon ${q.unknownSurfacePct} % Feld- und Waldwege ohne Belagsangabe)` : '';
+    notes.push(`⚠ ${q.unpavedPct} % nicht asphaltiert${woher} – ` +
+               `Regler „Asphalt statt Schotter“ höher stellen`);
   }
 
   warn.hidden = false;
