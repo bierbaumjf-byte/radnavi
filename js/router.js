@@ -38,13 +38,13 @@ export const PRESETS = {
     label: 'Radrouten-Naturroute',
     custom: true,
     tune: { route: 3.5, noise: 2.0, traffic: 2.0, forest: 1.6, river: 0.8, town: 2.5,
-            sidepath: 5.0, unpaved: 2.0, hill: 60, steps: false, ferry: true }
+            sidepath: 5.0, unpaved: 4.5, hill: 60, steps: false, ferry: true }
   },
   'natur+': {
     label: 'Radrouten streng',
     custom: true,
     tune: { route: 6.0, noise: 3.2, traffic: 3.2, forest: 2.6, river: 1.4, town: 3.5,
-            sidepath: 7.0, unpaved: 3.5, hill: 60, steps: false, ferry: true }
+            sidepath: 7.0, unpaved: 6.5, hill: 60, steps: false, ferry: true }
   },
   trekking: { label: 'Trekking', custom: false, server: 'trekking' },
   fastbike: { label: 'Schnell',  custom: false, server: 'fastbike' },

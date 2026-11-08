@@ -146,12 +146,20 @@ export async function bildVerkleinern(file) {
 
 const SETTINGS_KEY = 'radnavi.settings';
 
-export const SETTINGS_VERSION = 3;
+export const SETTINGS_VERSION = 4;
 
 /** Ab diesem Reglerwert meidet die Route Ortslagen tatsächlich. Darunter
  *  gewinnt der kürzere Weg durch den Ort. Nachgemessen: 1,5 ändert nichts,
  *  2,5 senkt den Ortsanteil von 20 % auf 5 %. */
 export const TOWN_WIRKSAM = 2.5;
+
+/** Neue Voreinstellung für „Asphalt statt Schotter". Bis zum 08.11.2026
+ *  wirkte der Regler nur auf ausdrücklich als unbefestigt getaggte Wege;
+ *  seither zählen auch Feld- und Waldwege ohne Belagsangabe mit, und bei
+ *  4,5 ist der Anteil nicht asphaltierter Strecke gemessen am kleinsten,
+ *  ohne nennenswerten Umweg: Bocholt → Winterswijk 18 % → 0,9 % bei
+ *  20,6 → 22,0 km. Höher kostet vor allem Umweg. */
+export const ASPHALT_VOREINSTELLUNG = 4.5;
 
 export const defaultSettings = {
   v: SETTINGS_VERSION,
@@ -196,6 +204,16 @@ export function loadSettings() {
     // will, zieht ihn einfach zurück; das bleibt dann erhalten.
     if ((!stored.v || stored.v < 3) && s.tune && s.tune.town < TOWN_WIRKSAM) {
       s.tune = { ...s.tune, town: TOWN_WIRKSAM };
+    }
+
+    // Fassung 4: Der Regler „Asphalt statt Schotter" wirkte nur halb –
+    // Wege ohne Belagsangabe sah er nicht. Das Profil ist repariert, und
+    // damit ist auch der gespeicherte Reglerwert zu niedrig angesetzt.
+    // Angehoben wird nur dieser eine Regler, und nur nach oben; wer
+    // Schotter mag, zieht ihn zurück und behält das dann.
+    if ((!stored.v || stored.v < 4) && s.tune &&
+        Number(s.tune.unpaved) < ASPHALT_VOREINSTELLUNG) {
+      s.tune = { ...s.tune, unpaved: ASPHALT_VOREINSTELLUNG };
     }
 
     if (!stored.v || stored.v < SETTINGS_VERSION) {
