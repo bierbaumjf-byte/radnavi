@@ -20,7 +20,7 @@ export async function parseFile(file) {
   const base = file.name.replace(/\.[^.]+$/, '');
   const lower = file.name.toLowerCase();
 
-  if (lower.endsWith('.geojson') || lower.endsWith('.json')) return parseGeoJSON(text, base);
+  if (lower.endsWith('.geojson') || lower.endsWith('.json')) return parseJSONDatei(text, base);
   if (lower.endsWith('.kml')) return parseKML(text, base);
   if (lower.endsWith('.tcx')) return parseTCX(text, base);
   return parseGPX(text, base);
@@ -112,10 +112,53 @@ export function parseGPX(text, base = 'Importierter Weg') {
   return out;
 }
 
-function parseGeoJSON(text, base) {
-  const gj = JSON.parse(text);
-  const feats = gj.type === 'FeatureCollection' ? gj.features
-               : gj.type === 'Feature' ? [gj] : [{ geometry: gj, properties: {} }];
+/**
+ * Eine .json-Datei kann zweierlei sein:
+ *   – GeoJSON, wie es diese App selbst herausgibt;
+ *   – das Rohbündel, das der Naviki-Export herunterlädt. Das ist eine
+ *     Liste von Einträgen, in denen die ganze GPX-Datei als Zeichenkette
+ *     unter "gpx" steckt. Vorher scheiterte der Import daran mit
+ *     „Keine Linie im GeoJSON gefunden" – richtig, aber nicht hilfreich.
+ */
+async function parseJSONDatei(text, base) {
+  let data;
+  try { data = JSON.parse(text); }
+  catch { throw new Error('Datei ist kein gültiges JSON'); }
+
+  if (Array.isArray(data) && data.some(e => e && typeof e.gpx === 'string')) {
+    return parseNavikiBuendel(data, base);
+  }
+  return parseGeoJSON(data, base);
+}
+
+/**
+ * Das Naviki-Bündel. Hunderte Wege in einer Datei – zwischendurch den
+ * Browser atmen lassen, sonst steht die Oberfläche minutenlang still.
+ */
+async function parseNavikiBuendel(liste, base) {
+  const out = [];
+  for (let i = 0; i < liste.length; i++) {
+    const e = liste[i];
+    if (!e || typeof e.gpx !== 'string') continue;
+    // "Name | 28,98 km, 31.10.2026, 10:30" – vor dem Strich steht der Name.
+    const titel = String(e.text || '').split('|')[0].trim() ||
+                  `${base}-${String(i).padStart(3, '0')}`;
+    try {
+      for (const w of parseGPX(e.gpx, titel)) {
+        w.source = 'Naviki';
+        out.push(w);
+      }
+    } catch { /* ein kaputter Eintrag soll die anderen 400 nicht kippen */ }
+    if (i % 20 === 19) await new Promise(r => setTimeout(r, 0));
+  }
+  if (!out.length) throw new Error('Keine Strecke im Naviki-Bündel gefunden');
+  return out;
+}
+
+function parseGeoJSON(gj, base) {
+  const feats = (gj && gj.type === 'FeatureCollection' ? gj.features
+               : gj && gj.type === 'Feature' ? [gj]
+               : [{ geometry: gj, properties: {} }]) || [];
   const out = [];
   for (const f of feats) {
     const g = f.geometry;
@@ -218,7 +261,7 @@ export function toGPX(wege) {
   const list = Array.isArray(wege) ? wege : [wege];
   const parts = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    `<gpx version="1.1" creator="Jans Super Fahrrad Navi" xmlns="${NS}">`,
+    `<gpx version="1.1" creator="Jan's super Fahrradnavi" xmlns="${NS}">`,
     '  <metadata>',
     `    <name>${esc(list.length === 1 ? list[0].name : 'RadNavi-Wege')}</name>`,
     `    <time>${new Date().toISOString()}</time>`,
