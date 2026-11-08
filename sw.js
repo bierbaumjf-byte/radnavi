@@ -7,7 +7,7 @@
  *  3. Routing / Suche – nur Netz. Eine alte Route wäre falsch.
  * ------------------------------------------------------------------ */
 
-const VERSION    = 'v8';
+const VERSION    = 'v9';
 const SHELL      = 'radnavi-shell-' + VERSION;
 const TILES      = 'radnavi-tiles';
 const TILE_LIMIT = 9000;
