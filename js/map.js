@@ -34,12 +34,23 @@ export const BASE_LAYERS = {
     opts: { subdomains: 'ab', maxZoom: 20, maxNativeZoom: 19,
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Humanitarian OSM Team' }
   },
-  // Luftbild. Nicht von Google: deren Kacheln gibt es nur innerhalb von
-  // Google Maps selbst, ein fremder Abruf verstößt gegen die Bedingungen.
-  // Esri liefert dieselbe Art Bild (in Deutschland oft dieselben Befliegungen)
-  // und erlaubt die Nutzung ausdrücklich, wenn die Herkunft dabeisteht.
+  // Googles Satellitenbild. lyrs=y ist die Mischung aus Luftbild und
+  // Beschriftung, die Google selbst "Hybrid" nennt – Orts- und Straßennamen
+  // sind also schon im Bild und brauchen keine zweite Ebene.
+  //
+  // Diese Adresse ist von Google nicht für fremde Karten vorgesehen. Sie
+  // kann jederzeit versiegen, und dann bleibt die Karte leer. Deshalb steht
+  // das Esri-Luftbild darunter als Ausweichmöglichkeit.
+  gsat: {
+    label: 'Luftbild (Google)',
+    url: 'https://mt{s}.google.com/vt/lyrs=y&hl=de&x={x}&y={y}&z={z}',
+    opts: { subdomains: '0123', maxZoom: 21, maxNativeZoom: 20,
+            attribution: 'Luftbild &copy; Google' }
+  },
+  // Luftbild von Esri – frei nutzbar, wenn die Herkunft dabeisteht.
+  // In Deutschland oft dieselben Befliegungen wie bei Google.
   sat: {
-    label: 'Luftbild (Satellit)',
+    label: 'Luftbild (Esri)',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     opts: { maxZoom: 20, maxNativeZoom: 19,
             attribution: 'Luftbild &copy; Esri, Maxar, Earthstar Geographics, GIS-Community' }
@@ -47,9 +58,10 @@ export const BASE_LAYERS = {
 };
 
 /**
- * Beschriftungen fürs Luftbild. Ein Satellitenbild ohne Namen ist zum
+ * Beschriftungen fürs Esri-Luftbild. Ein Satellitenbild ohne Namen ist zum
  * Hinsehen schön und zum Zurechtfinden unbrauchbar – deshalb legt sich
  * über das Luftbild eine durchsichtige Ebene mit Orten und Straßen.
+ * Googles Hybrid-Kachel bringt ihre Beschriftung schon mit.
  */
 const LABEL_OVERLAY = {
   url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
@@ -105,7 +117,12 @@ export class MapView {
     if (key === this.baseKey) return;
     const def = BASE_LAYERS[key] || BASE_LAYERS.osm;
     if (this.baseLayer) this.map.removeLayer(this.baseLayer);
-    this.baseLayer = L.tileLayer(def.url, { ...def.opts, crossOrigin: true }).addTo(this.map);
+    // crossOrigin nur, wo der Server es auch erlaubt. Wo nicht, lädt das
+    // Bild zwar – aber als undurchsichtige Antwort, die sich nicht
+    // offline vorhalten lässt. Siehe das Feld im Kartenverzeichnis.
+    const opts = { ...def.opts };
+    if (def.crossOrigin !== false) opts.crossOrigin = true;
+    this.baseLayer = L.tileLayer(def.url, opts).addTo(this.map);
     this.baseLayer.setZIndex(1);
     this.baseKey = key;
     this.setLabels(key === 'sat');
