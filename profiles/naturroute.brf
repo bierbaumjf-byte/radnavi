@@ -109,7 +109,26 @@ assign isbike = or hasbikerouteoraccess hascycleway
 assign ispaved = or surface=paved|asphalt|concrete smoothness=excellent|good
 assign isroughpaved = surface=paving_stones|sett|cobblestone|grass_paver
 assign isunpaved = not or ispaved or isroughpaved ( and surface= smoothness= )
-assign probablyGood = or ispaved and ( or isbike highway=footway ) not isunpaved
+
+#
+# Wege ohne Belagsangabe.
+#
+# isunpaved oben zaehlt nur, was ausdruecklich als unbefestigt getaggt
+# ist. Bei highway=path/track/bridleway/road ist das die Ausnahme: ein
+# Feldweg oder Pfad ohne surface-Angabe ist in aller Regel eben kein
+# Asphalt. Frueher galt er als befestigt - der Asphaltregler sah ihn
+# gar nicht, und hochgedreht wich die Route von getaggten Erdwegen
+# einfach auf ungetaggte Pfade aus statt auf die Strasse. Gemessen in
+# Kapstadt: Regler 0 -> 2.234 m ungetaggte Pfade, Regler 8 -> 4.806 m.
+#
+# footway und cycleway bleiben aussen vor: die sind ohne Angabe
+# meistens befestigt.
+#
+assign is_trailish     = highway=path|track|bridleway|road
+assign surface_unknown = and surface= smoothness=
+assign probablyUnpaved = or isunpaved and is_trailish surface_unknown
+
+assign probablyGood = or ispaved and ( or isbike highway=footway ) not probablyUnpaved
 
 #
 # "Offiziell markiert" in drei Stufen:
@@ -226,9 +245,13 @@ assign sidepath_cost    = if ( and is_cycleway_like is_loud ) then sidepath_pena
 # Gehwege sind kein Radweg.
 assign sidewalk_cost    = if footway=sidewalk then 2.0 else 0
 
-# Asphalt-Vorliebe unabhaengig vom Wegetyp.
-assign unpaved_cost     = if isunpaved then unpaved_extra
-                          else if isroughpaved then 0.6
+# Asphalt-Vorliebe unabhaengig vom Wegetyp. Der Faktor 2.5 ist gemessen,
+# nicht geraten: der Zuschlag wird auf die Kosten addiert und muss gegen
+# Laerm- und Ortszuschlaege von 5 bis 8 bestehen koennen. Mit dem Regler
+# auf 8 ergibt das 20 - damit verliert jeder unbefestigte Weg gegen jede
+# Strasse. Beim Standardwert 2.0 sind es 5, also eine Vorliebe, kein Verbot.
+assign unpaved_cost     = if probablyUnpaved then multiply unpaved_extra 2.5
+                          else if isroughpaved then multiply unpaved_extra 0.3
                           else 0
 
 #
