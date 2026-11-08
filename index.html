@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#1b3a2a">
+<title>RadNavi</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+      integrity="sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw=="
+      crossorigin="anonymous" referrerpolicy="no-referrer">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<div id="map" aria-label="Karte"></div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- Suche oben                                                          -->
+<!-- ------------------------------------------------------------------ -->
+<div class="topbar" id="topbar">
+  <div class="searchwrap">
+    <input id="search" type="search" placeholder="Adresse oder Ort suchen…" autocomplete="off"
+           enterkeyhint="search" aria-label="Adresse oder Ort suchen">
+    <button id="searchClear" class="iconbtn ghost" title="Leeren" aria-label="Suche leeren">✕</button>
+  </div>
+  <ul id="searchResults" class="results" hidden></ul>
+</div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- Kartenwerkzeuge rechts                                              -->
+<!-- ------------------------------------------------------------------ -->
+<div class="maptools">
+  <button id="btnLocate" class="iconbtn" title="Mein Standort" aria-label="Mein Standort">◎</button>
+  <button id="btnLayers" class="iconbtn" title="Kartenstil" aria-label="Kartenstil">▤</button>
+  <button id="btnAddMode" class="iconbtn" title="Punkte per Tippen setzen" aria-label="Punkte per Tippen setzen">✛</button>
+</div>
+
+<div id="layerMenu" class="popover" hidden>
+  <div class="popover-title">Kartenstil</div>
+  <div id="layerList" class="layerlist"></div>
+  <label class="switchrow">
+    <span>Radrouten einblenden</span>
+    <input type="checkbox" id="chkCycleOverlay">
+  </label>
+  <label class="switchrow">
+    <span>Nachtmodus</span>
+    <input type="checkbox" id="chkDark">
+  </label>
+</div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- Navigationsansicht (Vollbild während der Fahrt)                     -->
+<!-- ------------------------------------------------------------------ -->
+<div id="navView" class="navview" hidden>
+  <div class="nav-instruction">
+    <div id="navArrow" class="nav-arrow">↑</div>
+    <div class="nav-text">
+      <div id="navDist" class="nav-dist">–</div>
+      <div id="navWhat" class="nav-what">Navigation startet…</div>
+      <div id="navStreet" class="nav-street"></div>
+    </div>
+  </div>
+  <div class="nav-cockpit">
+    <div><b id="ckSpeed">–</b><span>km/h</span></div>
+    <div><b id="ckRest">–</b><span>km übrig</span></div>
+    <div><b id="ckEta">–</b><span>Ankunft</span></div>
+    <div><b id="ckAvg">–</b><span>Ø km/h</span></div>
+  </div>
+  <div class="nav-actions">
+    <button id="btnNavVoice" class="pill" aria-pressed="true">🔊 Ansagen</button>
+    <button id="btnNavStop" class="pill danger">Beenden</button>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- Unteres Panel                                                       -->
+<!-- ------------------------------------------------------------------ -->
+<section id="sheet" class="sheet">
+  <button id="sheetGrip" class="grip" aria-label="Panel ein-/ausklappen"><span></span></button>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="plan"  role="tab">Route</button>
+    <button class="tab"        data-tab="wege"  role="tab">Meine Wege</button>
+    <button class="tab"        data-tab="opts"  role="tab">Einstellungen</button>
+  </nav>
+
+  <!-- ---------------- Route planen ---------------- -->
+  <div class="tabpane active" id="tab-plan" role="tabpanel">
+
+    <ol id="wpList" class="wplist" aria-label="Streckenpunkte"></ol>
+
+    <div class="row">
+      <button id="btnAddWp"   class="btn">+ Punkt</button>
+      <button id="btnReverse" class="btn ghost" title="Richtung umkehren">⇅ Umkehren</button>
+      <button id="btnClear"   class="btn ghost">Leeren</button>
+    </div>
+
+    <div class="profilebar">
+      <label for="selProfile">Streckencharakter</label>
+      <select id="selProfile">
+        <option value="natur"   selected>Radrouten-Naturroute – ausgeschildert, ruhig, Asphalt</option>
+        <option value="natur+">Radrouten streng – fast nur Netz, auch große Umwege</option>
+        <option value="trekking">Trekking – gemischt, direkter</option>
+        <option value="fastbike">Schnell – zügig auf Asphalt</option>
+        <option value="shortest">Kürzeste Strecke</option>
+      </select>
+    </div>
+
+    <details id="tuning" class="tuning">
+      <summary>Feinabstimmung</summary>
+      <div class="sliders">
+        <label>Auf ausgeschilderten Radrouten bleiben <output id="outRoute"></output>
+          <input type="range" id="sldRoute" min="0" max="8" step="0.25"></label>
+        <label>Ruhe / wenig Lärm <output id="outNoise"></output>
+          <input type="range" id="sldNoise" min="0" max="4" step="0.2"></label>
+        <label>Wenig Verkehr <output id="outTraffic"></output>
+          <input type="range" id="sldTraffic" min="0" max="4" step="0.2"></label>
+        <label>Natur, Wald, Felder <output id="outForest"></output>
+          <input type="range" id="sldForest" min="0" max="4" step="0.2"></label>
+        <label>An Gewässern entlang <output id="outRiver"></output>
+          <input type="range" id="sldRiver" min="0" max="4" step="0.2"></label>
+        <label>Ortskerne umfahren <output id="outTown"></output>
+          <input type="range" id="sldTown" min="0" max="4" step="0.2"></label>
+        <label>Radwege an Autostraßen meiden <output id="outSide"></output>
+          <input type="range" id="sldSide" min="0" max="8" step="0.25"></label>
+        <label>Asphalt statt Schotter <output id="outUnpaved"></output>
+          <input type="range" id="sldUnpaved" min="0" max="8" step="0.25"></label>
+        <label>Höhenmeter sparen <output id="outHill"></output>
+          <input type="range" id="sldHill" min="0" max="120" step="5"></label>
+        <div class="row">
+          <label class="switchrow compact"><span>Treppen erlauben</span><input type="checkbox" id="chkSteps"></label>
+          <label class="switchrow compact"><span>Fähren erlauben</span><input type="checkbox" id="chkFerry"></label>
+        </div>
+        <button id="btnResetTune" class="btn ghost small">Auf Profilwerte zurücksetzen</button>
+      </div>
+    </details>
+
+    <details class="tuning">
+      <summary>Rundtour vorschlagen</summary>
+      <div class="roundtrip">
+        <label>Länge
+          <span class="inline"><input type="number" id="rtLen" min="5" max="250" step="5" value="40"> km</span>
+        </label>
+        <label>Richtung
+          <select id="rtDir">
+            <option value="-1" selected>beliebig (4 Vorschläge)</option>
+            <option value="0">Norden</option><option value="90">Osten</option>
+            <option value="180">Süden</option><option value="270">Westen</option>
+          </select>
+        </label>
+        <button id="btnRoundtrip" class="btn">Rundtouren berechnen</button>
+        <div id="rtResults" class="rtresults"></div>
+      </div>
+    </details>
+
+    <div id="routeSummary" class="summary" hidden></div>
+    <div id="elevWrap" class="elevwrap" hidden>
+      <canvas id="elev" height="110"></canvas>
+      <div id="elevHover" class="elevhover" hidden></div>
+    </div>
+    <div id="altBar" class="altbar" hidden></div>
+    <div id="routeWarn" class="warn" hidden></div>
+
+    <div class="row sticky">
+      <button id="btnRoute" class="btn primary">Route berechnen</button>
+      <button id="btnNavStart" class="btn" disabled>Navigation</button>
+      <button id="btnSaveRoute" class="btn ghost" disabled>Speichern</button>
+      <button id="btnExport" class="btn ghost" disabled>GPX</button>
+    </div>
+  </div>
+
+  <!-- ---------------- Meine Wege ---------------- -->
+  <div class="tabpane" id="tab-wege" role="tabpanel">
+    <div class="row">
+      <label class="btn" for="fileGpx">GPX/Dateien importieren</label>
+      <input type="file" id="fileGpx" accept=".gpx,.geojson,.json,.kml,.tcx" multiple hidden>
+      <button id="btnRecord" class="btn ghost">● Fahrt aufzeichnen</button>
+    </div>
+    <div class="row">
+      <input id="wegeFilter" type="search" placeholder="Filtern…" aria-label="Wege filtern">
+      <select id="wegeSort" aria-label="Sortierung">
+        <option value="date">Neueste zuerst</option>
+        <option value="name">Name</option>
+        <option value="len">Länge</option>
+      </select>
+    </div>
+    <div class="row" id="navikiRow" hidden>
+      <button id="btnNaviki" class="btn">Naviki-Wege übernehmen</button>
+      <span id="navikiInfo" class="muted small"></span>
+    </div>
+    <div id="wegeStats" class="muted small"></div>
+    <ul id="wegeList" class="wege"></ul>
+  </div>
+
+  <!-- ---------------- Einstellungen ---------------- -->
+  <div class="tabpane" id="tab-opts" role="tabpanel">
+    <label class="switchrow"><span>Sprachansagen</span><input type="checkbox" id="optVoice" checked></label>
+    <label class="switchrow"><span>Automatisch neu berechnen bei Abweichung</span><input type="checkbox" id="optReroute" checked></label>
+    <label class="switchrow"><span>Bildschirm während Navigation anlassen</span><input type="checkbox" id="optWake" checked></label>
+    <label class="switchrow"><span>Karte in Fahrtrichtung drehen</span><input type="checkbox" id="optRotate"></label>
+    <label class="blockrow"><span>Abweichung bis Neuberechnung</span>
+      <span class="inline"><input type="number" id="optOffRoute" min="20" max="300" step="10" value="60"> m</span></label>
+    <label class="blockrow"><span>Ansage vorher</span>
+      <span class="inline"><input type="number" id="optPrewarn" min="50" max="500" step="25" value="150"> m</span></label>
+
+    <div class="divider"></div>
+    <div class="blockrow"><span>Karten offline vorhalten</span>
+      <button id="btnCacheRoute" class="btn ghost small">Kacheln der Route laden</button></div>
+    <div id="cacheInfo" class="muted small"></div>
+    <div class="row">
+      <button id="btnCacheClear" class="btn ghost small">Kartenspeicher leeren</button>
+      <button id="btnExportAll" class="btn ghost small">Alle Wege als GPX</button>
+    </div>
+
+    <div class="divider"></div>
+    <div class="blockrow"><span>Routing-Server</span>
+      <span class="inline"><input type="text" id="optServer" value="https://brouter.de/brouter"></span></div>
+    <div id="profileState" class="muted small"></div>
+    <details class="tuning">
+      <summary>Routing-Profil im Klartext</summary>
+      <textarea id="profileText" spellcheck="false" rows="10"></textarea>
+      <div class="row">
+        <button id="btnProfileUpload" class="btn ghost small">Profil übernehmen</button>
+        <button id="btnProfileReset" class="btn ghost small">Original wiederherstellen</button>
+      </div>
+    </details>
+    <div class="muted small credits">
+      Karten &amp; Daten: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>-Mitwirkende ·
+      Routing: <a href="https://brouter.de" target="_blank" rel="noreferrer">BRouter</a> ·
+      Suche: <a href="https://nominatim.org" target="_blank" rel="noreferrer">Nominatim</a>
+    </div>
+  </div>
+</section>
+
+<div id="toast" class="toast" hidden></div>
+<div id="busy" class="busy" hidden><span></span></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
+        integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
