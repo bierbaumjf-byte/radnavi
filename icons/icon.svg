@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="RadNavi">
+  <rect width="512" height="512" rx="104" fill="#1b3a2a"/>
+  <!-- geschwungene Nebenstrecke -->
+  <path d="M96 392 C 160 392, 168 300, 232 288 C 300 275, 300 196, 240 176 C 196 161, 196 120, 256 112 L 416 112"
+        fill="none" stroke="#6fbf8e" stroke-width="26" stroke-linecap="round"/>
+  <!-- Baum als Zeichen für Natur -->
+  <circle cx="400" cy="300" r="52" fill="#4f9f6e"/>
+  <rect x="392" y="340" width="16" height="56" rx="8" fill="#2f6b4a"/>
+  <!-- Start und Ziel -->
+  <circle cx="96" cy="392" r="26" fill="#f4f3ee"/>
+  <circle cx="416" cy="112" r="26" fill="#e07a5f"/>
+</svg>
