@@ -7,7 +7,7 @@
  *  3. Routing / Suche – nur Netz. Eine alte Route wäre falsch.
  * ------------------------------------------------------------------ */
 
-const VERSION    = 'v3';
+const VERSION    = 'v4';
 const SHELL      = 'radnavi-shell-' + VERSION;
 const TILES      = 'radnavi-tiles';
 const TILE_LIMIT = 9000;
@@ -38,7 +38,10 @@ const TILE_HOSTS = [
   'tile.openstreetmap.fr',
   'tile.opentopomap.org',
   'tile.waymarkedtrails.org',
-  'server.arcgisonline.com'      // Luftbild und seine Beschriftung
+  'server.arcgisonline.com',     // Luftbild Esri und seine Beschriftung
+  // Googles Kachelserver, einzeln aufgezählt. Nicht "google.com" als
+  // Endung: damit liefe jede beliebige Google-Anfrage über diesen Zweig.
+  'mt0.google.com', 'mt1.google.com', 'mt2.google.com', 'mt3.google.com'
 ];
 
 const LIVE_HOSTS = ['brouter.de', 'bikerouter.de', 'nominatim.openstreetmap.org'];
