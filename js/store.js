@@ -146,7 +146,7 @@ export async function bildVerkleinern(file) {
 
 const SETTINGS_KEY = 'radnavi.settings';
 
-export const SETTINGS_VERSION = 4;
+export const SETTINGS_VERSION = 5;
 
 /** Ab diesem Reglerwert meidet die Route Ortslagen tatsächlich. Darunter
  *  gewinnt der kürzere Weg durch den Ort. Nachgemessen: 1,5 ändert nichts,
@@ -214,6 +214,15 @@ export function loadSettings() {
     if ((!stored.v || stored.v < 4) && s.tune &&
         Number(s.tune.unpaved) < ASPHALT_VOREINSTELLUNG) {
       s.tune = { ...s.tune, unpaved: ASPHALT_VOREINSTELLUNG };
+    }
+
+    // Fassung 5: neuer Schalter „Nur befestigte Wege" und eine echte
+    // Treppensperre. Wer schon eigene Regler gespeichert hat, kennt den
+    // Schalter nicht – ohne diesen Nachzug stünde er bei ihm auf „aus",
+    // und die App würde weiter über Feldwege führen. Treppen werden
+    // dabei ausdrücklich nicht angefasst: wer sie erlaubt hat, behält das.
+    if ((!stored.v || stored.v < 5) && s.tune && s.tune.paved == null) {
+      s.tune = { ...s.tune, paved: true };
     }
 
     if (!stored.v || stored.v < SETTINGS_VERSION) {

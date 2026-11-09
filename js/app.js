@@ -1469,6 +1469,7 @@ function applyTuneToUI(tune) {
     $(out).textContent = key === 'hill' ? tune[key] : Number(tune[key]).toFixed(1).replace('.', ',');
   }
   $('#chkSteps').checked = !!tune.steps;
+  $('#chkPaved').checked = tune.paved !== false;
   $('#chkFerry').checked = !!tune.ferry;
 }
 
@@ -1479,7 +1480,8 @@ function readTuneFromUI() {
     forest: Number($('#sldForest').value), river: Number($('#sldRiver').value),
     town: Number($('#sldTown').value), sidepath: Number($('#sldSide').value),
     unpaved: Number($('#sldUnpaved').value), hill: Number($('#sldHill').value),
-    steps: $('#chkSteps').checked, ferry: $('#chkFerry').checked
+    steps: $('#chkSteps').checked, paved: $('#chkPaved').checked,
+    ferry: $('#chkFerry').checked
   };
 }
 
@@ -1599,7 +1601,7 @@ function bindUI() {
       if (waypoints.length >= 2) computeRoute();
     });
   }
-  for (const sel of ['#chkSteps', '#chkFerry']) {
+  for (const sel of ['#chkSteps', '#chkPaved', '#chkFerry']) {
     $(sel).onchange = () => {
       S.tune = readTuneFromUI(); persist();
       if (waypoints.length >= 2) computeRoute();

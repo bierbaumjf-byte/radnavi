@@ -29,6 +29,7 @@ export const TUNABLES = [
 
 const BOOLEANS = [
   { key: 'steps', assign: 'allow_steps' },
+  { key: 'paved', assign: 'only_paved' },
   { key: 'ferry', assign: 'allow_ferries' }
 ];
 
@@ -38,13 +39,13 @@ export const PRESETS = {
     label: 'Radrouten-Naturroute',
     custom: true,
     tune: { route: 3.5, noise: 2.0, traffic: 2.0, forest: 1.6, river: 0.8, town: 2.5,
-            sidepath: 5.0, unpaved: 4.5, hill: 60, steps: false, ferry: true }
+            sidepath: 5.0, unpaved: 4.5, hill: 60, steps: false, paved: true, ferry: true }
   },
   'natur+': {
     label: 'Radrouten streng',
     custom: true,
     tune: { route: 6.0, noise: 3.2, traffic: 3.2, forest: 2.6, river: 1.4, town: 3.5,
-            sidepath: 7.0, unpaved: 6.5, hill: 60, steps: false, ferry: true }
+            sidepath: 7.0, unpaved: 6.5, hill: 60, steps: false, paved: true, ferry: true }
   },
   trekking: { label: 'Trekking', custom: false, server: 'trekking' },
   fastbike: { label: 'Schnell',  custom: false, server: 'fastbike' },
@@ -226,7 +227,10 @@ function serverError(raw, status, full) {
   } else if (/datafile.*not found|no data file|not covered/i.test(raw)) {
     message = 'Für diesen Bereich hat der Routing-Server keine Kartendaten. Punkt näher an befahrbares Gebiet setzen.';
   } else if (/target island|position not mapped|no route found|unreachable|no track found/i.test(raw)) {
-    message = 'Keine Verbindung gefunden. Liegt ein Punkt abseits des Wegenetzes?';
+    message = 'Keine Verbindung gefunden. Liegt ein Punkt abseits des Wegenetzes? ' +
+              'Möglich ist auch, dass die einzige Verbindung ausgeschlossen ist – ' +
+              'unter „Feinabstimmung“ lassen sich „Nur befestigte Wege“ abschalten ' +
+              'oder „Treppen erlauben“ einschalten.';
   } else if (status === 500) {
     message = 'Der Routing-Server konnte die Anfrage nicht verarbeiten.';
   }
