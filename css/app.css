@@ -213,6 +213,7 @@ textarea { width: 100%; font-family: ui-monospace, "Cascadia Code", Consolas, mo
   min-height: var(--tap); padding: 4px 2px; font-size: 15px;
 }
 .switchrow.compact { min-height: 34px; font-size: 14px; flex: 1; }
+.switchrow small { display: block; color: var(--text-dim); font-size: 12px; margin-top: 1px; }
 .switchrow input[type="checkbox"] { width: 46px; height: 27px; accent-color: var(--accent); flex: none; }
 .inline { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 14px; }
 .inline input { width: 84px; min-height: 38px; }
