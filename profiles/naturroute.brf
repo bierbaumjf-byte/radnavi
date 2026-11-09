@@ -11,6 +11,7 @@ assign validForBikes = true
 
 # --- Grundschalter ---
 assign   allow_steps              = false  # %allow_steps% | Treppen erlauben | boolean
+assign   only_paved               = true   # %only_paved% | Nur befestigte Wege | boolean
 assign   allow_ferries            = true   # %allow_ferries% | Faehren erlauben | boolean
 assign   ignore_cycleroutes       = false  # %ignore_cycleroutes% | Ausgeschilderte Radrouten ignorieren | boolean
 assign   stick_to_cycleroutes     = false  # %stick_to_cycleroutes% | Nur ausgeschilderten Radrouten folgen | boolean
@@ -129,6 +130,18 @@ assign surface_unknown = and surface= smoothness=
 assign probablyUnpaved = or isunpaved and is_trailish surface_unknown
 
 assign probablyGood = or ispaved and ( or isbike highway=footway ) not probablyUnpaved
+
+#
+# Wege, auf denen man nicht FAHREN darf.
+#
+# bicycle=no verbietet das Radfahren, bicycle=dismount heisst absteigen
+# und schieben, bicycle=use_sidepath heisst "nimm den Radweg daneben".
+# Alle drei sind keine fahrbaren Verbindungen. Bisher kosteten sie ueber
+# accesspenalty nur 4 (weil Zufuss erlaubt bleibt) - viel zu billig.
+# Gemessen in Palma, Kathedrale zur Placa Major: 48 m davon mitten in
+# der Route. Jetzt hart ausgeschlossen.
+#
+assign nicht_fahrbar = bicycle=no|dismount|use_sidepath
 
 #
 # "Offiziell markiert" in drei Stufen:
@@ -288,6 +301,12 @@ assign footaccess =
        else if foot= then defaultaccess
        else not foot=private|no|use_sidepath
 
+# Nur zu Fuss erlaubt: bleibt bei 4 aus dem Trekking-Profil. Der Versuch,
+# das auf 10 zu heben, ist gemessen schiefgegangen: Palma -> Valldemossa
+# kippte von 26,15 km ueber ruhige Nebenstrassen (30 % tertiary, 13 %
+# ausgeschilderte Radroute) auf 19,65 km mit 28 % Landstrasse und 6,6 %
+# Bundesstrasse. Ein kurzes fussrechtliches Stueck haelt dort die ganze
+# ruhige Kette zusammen - wird es teuer, bricht sie weg.
 assign accesspenalty =
        if bikeaccess then 0
        else if footaccess then 4
@@ -338,6 +357,21 @@ assign costfactor
 
   else if ( highway=motorway|motorway_link          ) then   10000
   else if ( highway=proposed|abandoned|construction ) then   10000
+
+  #
+  # Harte Verbote. Die muessen VOR dem "min 9999" stehen.
+  #
+  # Darunter wird die ganze Summe auf 9999 gedeckelt, und BRouter
+  # schliesst einen Weg erst ab 10000 aus. Eine Treppe mit "Kosten
+  # 10000" war deshalb nie verboten, sondern nur sehr teuer - und wurde
+  # genommen, sobald es keine billigere Verbindung gab. Nachgemessen in
+  # Palma, Kathedrale zur Placa Major: 15 m Treppe. Dasselbe galt fuer
+  # komplett gesperrte Wege. Jetzt ist beides wirklich ausgeschlossen.
+  #
+  else if ( and highway=steps not allow_steps     ) then   10000
+  else if ( greater accesspenalty 9000            ) then   10000
+  else if ( nicht_fahrbar                         ) then   10000
+  else if ( and only_paved probablyUnpaved        ) then   10000
 
   else min 9999
 
