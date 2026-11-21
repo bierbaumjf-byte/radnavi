@@ -78,10 +78,19 @@ body.navigating .topbar { display: none; }
   padding: 0 6px 0 12px;
   max-width: 620px; margin: 0 auto;
 }
-#search {
+#search, #wpSearch {
   flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text);
   font-size: 16px; height: var(--tap); outline: none;
 }
+
+/* Dasselbe Suchfeld noch einmal, aber im Planungsbereich statt über der
+   Karte: kein Schatten, keine Mittelzentrierung, volle Breite. */
+.searchwrap.inline {
+  background: var(--surface-2); box-shadow: none;
+  max-width: none; margin: 8px 0 0;
+}
+.searchwrap.inline:focus-within { border-color: var(--accent); }
+.results.inline { max-width: none; margin: 6px 0 0; box-shadow: none; max-height: 34vh; }
 .results {
   pointer-events: auto;
   list-style: none; margin: 6px auto 0; padding: 4px;
@@ -434,6 +443,30 @@ body.navigating .toast, body.sheet-collapsed .toast { bottom: 80px; }
 }
 .wp-marker.start { background: #2f8f4a; }
 .wp-marker.end   { background: #a8321f; }
+
+/* Feld am angetippten Streckenpunkt – hier steht das Kreuz zum Entfernen. */
+.wp-pop .leaflet-popup-content-wrapper {
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.wp-pop .leaflet-popup-content { margin: 10px 12px; min-width: 178px; }
+.wp-pop .leaflet-popup-tip { background: var(--surface); border: 1px solid var(--line); }
+.wp-pop-role { color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.wp-pop-name { font-size: 14px; font-weight: 600; margin: 2px 0 9px; line-height: 1.35; }
+.wp-pop-del, .wp-pop-keep {
+  display: block; width: 100%; min-height: var(--tap);
+  border-radius: 10px; font: inherit; font-weight: 600; cursor: pointer;
+}
+.wp-pop-del {
+  border: 1px solid #a8321f; background: #a8321f; color: #fff; margin-bottom: 6px;
+}
+.wp-pop-del:hover { background: #8c2818; border-color: #8c2818; }
+.wp-pop-keep {
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--text-dim);
+  font-weight: 500;
+}
+.wp-pop-keep:hover { background: var(--accent-2); color: var(--text); }
 .me-marker {
   width: 18px; height: 18px; border-radius: 50%;
   background: var(--route); border: 3px solid #fff;
