@@ -100,6 +100,14 @@
 
     <ol id="wpList" class="wplist" aria-label="Streckenpunkte"></ol>
 
+    <div class="searchwrap inline">
+      <input id="wpSearch" type="search" placeholder="Adresse eingeben und als Punkt anhängen…"
+             autocomplete="off" enterkeyhint="search"
+             aria-label="Adresse als Streckenpunkt anhängen">
+      <button id="wpSearchClear" class="iconbtn ghost" title="Leeren" aria-label="Eingabe leeren">✕</button>
+    </div>
+    <ul id="wpSearchResults" class="results inline" hidden></ul>
+
     <div class="row">
       <button id="btnAddWp"   class="btn">+ Punkt</button>
       <button id="btnReverse" class="btn ghost" title="Richtung umkehren">⇅ Umkehren</button>

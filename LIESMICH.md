@@ -320,6 +320,26 @@ Wenn die einzige Verbindung an einer dieser Sperren hängt, meldet die App
 „Keine Verbindung gefunden“ und nennt die beiden Schalter, mit denen man
 sie wieder öffnet.
 
+### Warum das Antippen eines Punktes jetzt ein Feld öffnet
+
+Bis zum 21.11.2026 löschte ein Antippen der Marke den Punkt **sofort** – und
+nur dann, wenn mehr als zwei Punkte gesetzt waren:
+
+```js
+onWaypointClick: i => {
+  if (waypoints.length <= 2) return;   // genau hier klemmte es
+  removeWaypoint(i);
+}
+```
+
+Das ist zweimal falsch herum. Wer Start oder Ziel danebengesetzt hatte –
+der häufigste Fall überhaupt –, kam gar nicht mehr daran. Und wer drei oder
+mehr Punkte hatte, löschte bei jedem unbeabsichtigten Tippen einen, ohne
+Rückfrage und ohne Weg zurück. Jetzt öffnet ein Antippen ein kleines Feld
+am Punkt: Rolle (Start/Ziel/Zwischenpunkt), Name, ein rotes „✕ Diesen Punkt
+entfernen" und „Behalten". Das gilt für **jeden** Punkt, auch wenn nur
+einer gesetzt ist. Entfernen meldet sich mit einem Hinweis samt Namen.
+
 ### Was die Route tatsächlich geworden ist
 
 Unter jeder Route steht, wie viel Prozent befestigt sind und wie viel durch
@@ -361,8 +381,14 @@ Die Radroutenpflicht kostet also auf der langen Strecke rund 4 % Umweg und
 ## Funktionen
 
 **Planen**
-- Punkte durch Tippen in die Karte oder über die Adresssuche
-- Zwischenziele beliebig viele, verschiebbar (▲ ▼ oder Ziehen), einzeln löschbar
+- Punkte durch Tippen in die Karte, über die Suche oben **oder über das Feld
+  „Adresse eingeben und als Punkt anhängen" direkt unter der Punkteliste**.
+  Jede gefundene Adresse hängt sich hinten an und wird damit zum neuen Ziel.
+  Auch reine Koordinaten („51.9682, 7.6286") werden erkannt.
+- **Einen Punkt wieder loswerden**: auf der Karte antippen – es geht ein
+  kleines Feld auf mit „✕ Diesen Punkt entfernen" und „Behalten". In der
+  Punkteliste steht dasselbe Kreuz am rechten Rand.
+- Zwischenziele beliebig viele, verschiebbar (▲ ▼ oder Ziehen)
 - Marken lassen sich auf der Karte direkt verschieben, die Route rechnet nach
 - Bis zu drei Varianten je Berechnung
 - Höhenprofil mit Fadenkreuz; der Punkt wandert dabei über die Karte
