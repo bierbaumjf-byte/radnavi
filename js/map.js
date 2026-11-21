@@ -75,10 +75,10 @@ const CYCLE_OVERLAY = {
 };
 
 export class MapView {
-  constructor(elId, { onMapClick, onWaypointMoved, onWaypointClick } = {}) {
+  constructor(elId, { onMapClick, onWaypointMoved, onWaypointRemove } = {}) {
     this.onMapClick = onMapClick;
     this.onWaypointMoved = onWaypointMoved;
-    this.onWaypointClick = onWaypointClick;
+    this.onWaypointRemove = onWaypointRemove;
 
     this.map = L.map(elId, {
       zoomControl: false,
@@ -192,19 +192,57 @@ export class MapView {
       const m = L.marker([wp.lat, wp.lon], { icon, draggable: true, autoPan: true,
                                              keyboard: false, zIndexOffset: 400 });
       m.addTo(this.map);
-      m.bindTooltip(wp.name || label, { direction: 'top', offset: [0, -14] });
 
       m.on('dragend', () => {
         const p = m.getLatLng();
         if (this.onWaypointMoved) this.onWaypointMoved(i, p.lat, p.lng);
       });
-      m.on('click', ev => {
-        L.DomEvent.stopPropagation(ev);
-        if (this.onWaypointClick) this.onWaypointClick(i);
+
+      //
+      // Antippen oeffnet ein kleines Feld am Punkt. Frueher loeschte ein
+      // Antippen den Punkt sofort - und nur dann, wenn mehr als zwei
+      // Punkte gesetzt waren. Wer aus Versehen Start oder Ziel daneben
+      // gesetzt hatte, kam gar nicht mehr daran. Jetzt steht hier ein
+      // Kreuz zum Entfernen, und zwar an jedem Punkt.
+      //
+      m.bindPopup(() => this.waypointPopup(i, wp, label), {
+        className: 'wp-pop', closeButton: false,
+        autoPan: true, autoPanPadding: [30, 30], offset: [0, -10]
       });
 
       this.wpMarkers.push(m);
     });
+  }
+
+  /** Inhalt des Feldes, das am angetippten Streckenpunkt aufgeht. */
+  waypointPopup(i, wp, label) {
+    const box = document.createElement('div');
+
+    const titel = document.createElement('div');
+    titel.className = 'wp-pop-name';
+    titel.textContent = wp.name || `${wp.lat.toFixed(5)}, ${wp.lon.toFixed(5)}`;
+
+    const rolle = document.createElement('div');
+    rolle.className = 'wp-pop-role';
+    rolle.textContent = label === 'S' ? 'Start' : label === 'Z' ? 'Ziel' : 'Zwischenpunkt ' + label;
+
+    const weg = document.createElement('button');
+    weg.type = 'button';
+    weg.className = 'wp-pop-del';
+    weg.textContent = '✕  Diesen Punkt entfernen';
+    weg.onclick = () => {
+      this.map.closePopup();
+      if (this.onWaypointRemove) this.onWaypointRemove(i);
+    };
+
+    const zu = document.createElement('button');
+    zu.type = 'button';
+    zu.className = 'wp-pop-keep';
+    zu.textContent = 'Behalten';
+    zu.onclick = () => this.map.closePopup();
+
+    box.append(rolle, titel, weg, zu);
+    return box;
   }
 
   /* ------------------------------ Route --------------------------- */

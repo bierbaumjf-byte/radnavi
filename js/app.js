@@ -68,10 +68,7 @@ const map = new MapView('map', {
     renderWaypoints();
     if (waypoints.length >= 2) computeRoute();
   },
-  onWaypointClick: i => {
-    if (waypoints.length <= 2) return;
-    removeWaypoint(i);
-  }
+  onWaypointRemove: i => removeWaypoint(i)
 });
 
 const elev = new ElevationChart($('#elev'), {
@@ -231,8 +228,10 @@ async function nameWaypoint(i) {
 }
 
 function removeWaypoint(i) {
+  const weg = waypoints[i];
   waypoints.splice(i, 1);
   renderWaypoints();
+  toast('Punkt entfernt' + (weg && weg.name ? ': ' + weg.name : ''));
   if (waypoints.length >= 2) computeRoute();
   else { clearRouteDisplay(); S.lastWaypoints = waypoints; persist(); }
 }
@@ -251,7 +250,7 @@ function renderWaypoints() {
 
   if (!waypoints.length) {
     const li = document.createElement('li');
-    li.innerHTML = '<span class="wp-name empty">In die Karte tippen oder oben eine Adresse suchen</span>';
+    li.innerHTML = '<span class="wp-name empty">In die Karte tippen oder unten eine Adresse eingeben</span>';
     ol.appendChild(li);
   }
 
@@ -859,44 +858,54 @@ const latlonOf = ([lon, lat]) => ({ lat, lon });
 
 /* --------------------------- Adresssuche -------------------------- */
 
-let searchTimer = null;
-let searchAbort = null;
+/**
+ * Hängt an ein Eingabefeld eine Adresssuche mit Trefferliste.
+ *
+ * Zweimal gebraucht, mit demselben Verhalten: oben über der Karte und
+ * unten bei der Punkteliste. Jedes Feld bekommt seinen eigenen Zeitgeber
+ * und seinen eigenen Abbruch – sonst würgt das eine das andere ab.
+ */
+function bindAddressPicker({ inputSel, listSel, clearSel, umgebung, onPick }) {
+  const input = $(inputSel);
+  const list = $(listSel);
+  if (!input || !list) return;
 
-function bindSearch() {
-  const input = $('#search');
-  const list = $('#searchResults');
+  let timer = null;
+  let abort = null;
 
   const hide = () => { list.hidden = true; list.innerHTML = ''; };
 
   input.addEventListener('input', () => {
-    clearTimeout(searchTimer);
+    clearTimeout(timer);
     const q = input.value.trim();
     if (q.length < 2) { hide(); return; }
-    searchTimer = setTimeout(() => runSearch(q), 420);
+    timer = setTimeout(() => runSearch(q), 420);
   });
 
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
-      clearTimeout(searchTimer);
-      const first = list.querySelector('li');
+      clearTimeout(timer);
+      const first = list.querySelector('li[data-treffer]');
       if (first) first.click();
       else runSearch(input.value.trim());
     } else if (e.key === 'Escape') hide();
   });
 
-  $('#searchClear').onclick = () => { input.value = ''; hide(); input.focus(); };
+  if (clearSel && $(clearSel)) {
+    $(clearSel).onclick = () => { input.value = ''; hide(); input.focus(); };
+  }
 
   document.addEventListener('click', e => {
-    if (!e.target.closest('.topbar')) hide();
+    if (!e.target.closest(umgebung)) hide();
   });
 
   async function runSearch(q) {
     if (q.length < 2) return;
-    if (searchAbort) searchAbort.abort();
-    searchAbort = new AbortController();
+    if (abort) abort.abort();
+    abort = new AbortController();
     busy(true);
     try {
-      const hits = await G.search(q, { near: map.center(), signal: searchAbort.signal });
+      const hits = await G.search(q, { near: map.center(), signal: abort.signal });
       list.innerHTML = '';
       if (!hits.length) {
         list.innerHTML = '<li><b>Nichts gefunden</b><span>Anderen Begriff versuchen</span></li>';
@@ -905,16 +914,11 @@ function bindSearch() {
       }
       for (const h of hits) {
         const li = document.createElement('li');
+        li.dataset.treffer = '1';
         li.innerHTML = `<b></b><span></span>`;
         li.firstChild.textContent = h.name;
         li.lastChild.textContent = h.detail || '';
-        li.onclick = () => {
-          hide();
-          input.value = '';
-          map.panTo(h.lat, h.lon, Math.max(14, map.getView().zoom));
-          addWaypoint(h, { name: h.name, autoRoute: true });
-          toast(waypoints.length === 1 ? `Start: ${h.name}` : `Ziel: ${h.name}`);
-        };
+        li.onclick = () => { hide(); input.value = ''; onPick(h); };
         list.appendChild(li);
       }
       list.hidden = false;
@@ -925,6 +929,30 @@ function bindSearch() {
       busy(false);
     }
   }
+}
+
+/** Einen Treffer der Adresssuche als Streckenpunkt übernehmen. */
+function adresseAlsPunkt(h, { hinfahren = true } = {}) {
+  if (hinfahren) map.panTo(h.lat, h.lon, Math.max(14, map.getView().zoom));
+  addWaypoint(h, { name: h.name, autoRoute: true });
+  const n = waypoints.length;
+  toast(n === 1 ? `Start: ${h.name}`
+               : n === 2 ? `Ziel: ${h.name}`
+               : `Punkt ${n} angehängt – jetzt Ziel: ${h.name}`);
+}
+
+function bindSearch() {
+  bindAddressPicker({
+    inputSel: '#search', listSel: '#searchResults', clearSel: '#searchClear',
+    umgebung: '.topbar', onPick: h => adresseAlsPunkt(h)
+  });
+
+  // Dasselbe noch einmal unten bei der Punkteliste. Wer die Strecke am
+  // Schreibtisch plant, tippt lieber Adressen, als in die Karte zu treffen.
+  bindAddressPicker({
+    inputSel: '#wpSearch', listSel: '#wpSearchResults', clearSel: '#wpSearchClear',
+    umgebung: '#tab-plan', onPick: h => adresseAlsPunkt(h)
+  });
 }
 
 /* ---------------------- Übernahme aus Naviki ---------------------- *
